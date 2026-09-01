@@ -59,21 +59,24 @@ function builtInMemoryEnabled() {
 // 与 _abortController（用户点「中止」时掐，重构/补漏用）。历史 bug：fetch 只绑了前者，
 // 用户点中止只能在「两组之间」生效，当前那次 LLM 调用掐不断 → 感觉「点了没反应」。
 // 不依赖 AbortSignal.any（老移动端浏览器未必有），手动串一个组合 controller，任一 abort 即 abort。
-// 已知微漏：请求成功时 relay 监听器挂在旧 _jobAbortController / _abortController 上不主动移除；
-// abortAll() 会 abort 这两路 → relay 触发 → combined.abort → once 自动解绑，故泄漏仅发生在
-// 成功完成的请求（<1KB/次，聊天切换时 abortAll() 清空，不可观测）。修复需改调用方签名，不划算。
+// dispose 由调用方在请求完成（成功/失败/中止）后调用，移除两路监听器。
+// 单源路径（a||b 之一为 null）无新建 controller，dispose = null 安全。
 function jobSignal() {
     const a = _jobAbortController?.signal;
     const b = _abortController?.signal;
-    if (!a && !b) return undefined;
-    if (a && !b) return a;
-    if (b && !a) return b;
-    if (a.aborted || b.aborted) return a.aborted ? a : b;
+    if (!a && !b) return { signal: undefined, dispose: null };
+    if (a && !b) return { signal: a, dispose: null };
+    if (b && !a) return { signal: b, dispose: null };
+    if (a.aborted || b.aborted) return { signal: a.aborted ? a : b, dispose: null };
     const combined = new AbortController();
     const relay = () => combined.abort();
+    const dispose = () => {
+        a.removeEventListener('abort', relay);
+        b.removeEventListener('abort', relay);
+    };
     a.addEventListener('abort', relay, { once: true });
     b.addEventListener('abort', relay, { once: true });
-    return combined.signal;
+    return { signal: combined.signal, dispose };
 }
 
 // ─── Utility: fast non-crypto hash ───────────────────────────────────────────
@@ -463,13 +466,16 @@ async function runL0(groupKey, { queueL1 = true } = {}) {
     const chatIdSnap = getContext().chatId;
     const messages = buildL0Prompt(prevSummary, group.floors);
     let response = '';
+    const { signal, dispose } = jobSignal();
     try {
-        response = await _callApi(messages, jobSignal());
+        response = await _callApi(messages, signal);
     } catch (err) {
-        if (err?.name === 'AbortError') return false;    // chat switched; drop silently
+        if (err?.name === 'AbortError') { dispose?.(); return false; }
+        dispose?.();
         recordFailure(groupKey, err, 'request');
         return false;
     }
+    dispose?.();
 
     // Guard: don't write results into a different chat's metadata
     if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap) return false;
@@ -554,14 +560,17 @@ async function runL1(range) {
     const chatIdSnap = getContext().chatId;
     const messages = buildL1Prompt(entries);
     let response = '';
+    const { signal, dispose } = jobSignal();
     try {
-        response = await _callApi(messages, jobSignal());
+        response = await _callApi(messages, signal);
     } catch (err) {
-        if (err?.name === 'AbortError') return false;
+        if (err?.name === 'AbortError') { dispose?.(); return false; }
+        dispose?.();
         m.system.lastError = diagnosticMessage(err, { phase: 'request' });
         m.system.lastDiagnostic = safeDiagnosticLog('memory', 'request', err, { background: true });
         return false;
     }
+    dispose?.();
     if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap) return false;
     if (!response || response.length < 20) return false;
 
