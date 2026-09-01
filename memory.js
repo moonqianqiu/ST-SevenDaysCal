@@ -59,6 +59,9 @@ function builtInMemoryEnabled() {
 // 与 _abortController（用户点「中止」时掐，重构/补漏用）。历史 bug：fetch 只绑了前者，
 // 用户点中止只能在「两组之间」生效，当前那次 LLM 调用掐不断 → 感觉「点了没反应」。
 // 不依赖 AbortSignal.any（老移动端浏览器未必有），手动串一个组合 controller，任一 abort 即 abort。
+// 已知微漏：请求成功时 relay 监听器挂在旧 _jobAbortController / _abortController 上不主动移除；
+// abortAll() 会 abort 这两路 → relay 触发 → combined.abort → once 自动解绑，故泄漏仅发生在
+// 成功完成的请求（<1KB/次，聊天切换时 abortAll() 清空，不可观测）。修复需改调用方签名，不划算。
 function jobSignal() {
     const a = _jobAbortController?.signal;
     const b = _abortController?.signal;
@@ -144,10 +147,7 @@ function persist() {
 //
 // 配置：逗号分隔的裸标签名（可带或省略首尾 <>，normalizeTagNames 自动剥除）。
 // 默认两列表均为空 = M0；配置任一列表即启用对应模式的内容级过滤。
-export function normalizeTagList(csv) {
-    return normalizeTagNames(csv);
-}
-const parseTagList = normalizeTagList;
+
 const escapeTagName = name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Replace balanced blocks of one tag name.  A non-greedy regex cannot
@@ -182,8 +182,8 @@ function replaceBalancedTagBlocks(input, name, replacer) {
 export function stripTags(raw, opts = {}) {
     if (!raw) return '';
 
-    const keep  = parseTagList(opts.keepTags  ?? '');
-    const extra = parseTagList(opts.extraTags ?? '');
+    const keep  = normalizeTagNames(opts.keepTags  ?? '');
+    const extra = normalizeTagNames(opts.extraTags ?? '');
     const keepStash = [];
 
     // 1. 移除 HTML/XML 注释（通用）
@@ -206,11 +206,19 @@ export function stripTags(raw, opts = {}) {
         s = (s.match(/\s*\u0000ST_KEEP_\d+\u0000\s*/g) || []).join('\n\n');
     } else {
         // M0/M1：轻量卫生 —— 删注释（上步已做）、孤立/自闭合标记；配对标签原样保留。
+        // 关键：非贪婪正则无法处理嵌套同名（<content>…<content>…</content>…</content>），
+        // 必须用栈式 replaceBalancedTagBlocks 提取每对平衡块（栈天然匹配最外层配对）。
         const pairs = [];
-        s = s.replace(/<([\p{L}][\p{L}\p{N}_~-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1\s*>/giu, m => {
-            pairs.push(m);
-            return `\u0000P${pairs.length - 1}\u0000`;
-        });
+        const names = new Set();
+        const nameRx = /<([\p{L}][\p{L}\p{N}_~-]*)/gu;
+        let m;
+        while ((m = nameRx.exec(s))) names.add(m[1].toLowerCase());
+        for (const name of names) {
+            s = replaceBalancedTagBlocks(s, name, block => {
+                pairs.push(block);
+                return `\u0000P${pairs.length - 1}\u0000`;
+            });
+        }
         s = s.replace(/<\/?[\p{L}][\p{L}\p{N}_~-]*(?:\s[^>]*)?\/?>/gu, '');
         s = s.replace(/\u0000P(\d+)\u0000/g, (_m, i) => pairs[+i] ?? '');
     }
