@@ -150,6 +150,35 @@ export function normalizeTagList(csv) {
 const parseTagList = normalizeTagList;
 const escapeTagName = name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Replace balanced blocks of one tag name.  A non-greedy regex cannot
+// distinguish nested same-name tags (e.g. <think>a<think>b</think>c</think>).
+function replaceBalancedTagBlocks(input, name, replacer) {
+    const safe = escapeTagName(name);
+    const token = new RegExp(`<\\/?${safe}(?:\\s[^<>]*?)?\\/?>`, 'giu');
+    const stack = [];
+    const spans = [];
+    let match;
+    while ((match = token.exec(input))) {
+        const raw = match[0];
+        if (/^<\s*\//.test(raw)) {
+            if (stack.length) {
+                const open = stack.pop();
+                if (!stack.length) spans.push([open.start, open.end, match.index, match.index + raw.length]);
+            }
+        } else if (!/\/\s*>$/.test(raw)) {
+            stack.push({ start: match.index, end: match.index + raw.length });
+        }
+    }
+    let out = input;
+    for (let i = spans.length - 1; i >= 0; i--) {
+        const [start, openEnd, closeStart, end] = spans[i];
+        const block = out.slice(start, end);
+        const inner = out.slice(openEnd, closeStart);
+        out = out.slice(0, start) + replacer(block, inner) + out.slice(end);
+    }
+    return out;
+}
+
 export function stripTags(raw, opts = {}) {
     if (!raw) return '';
 
@@ -162,27 +191,19 @@ export function stripTags(raw, opts = {}) {
 
     // 2. 删除 extra 列表标签及其内容（M1/M3；先于 keep，extra 恒优先）
     for (const name of extra) {
-        const safeName = escapeTagName(name);
-        const rx = new RegExp(`<${safeName}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${safeName}\\s*>`, 'giu');
-        let prev;
-        do {
-            prev = s;
-            s = s.replace(rx, '');
-        } while (s !== prev);
+        s = replaceBalancedTagBlocks(s, name, () => '');
     }
 
     // 3. M2/M3：keep 块保活 —— 剥掉 keep 标签的标记，内部内容（原样、不再二次清洗）入仓；
     //    保活块之外的一切（非 keep 标签块与裸文本）全部剔除，仅拼回占位符。
     if (keep.length) {
         for (const name of keep) {
-            const safeName = escapeTagName(name);
-            const rx = new RegExp(`<${safeName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${safeName}\\s*>`, 'giu');
-            s = s.replace(rx, (_m, inner) => {
+            s = replaceBalancedTagBlocks(s, name, (block, inner) => {
                 keepStash.push(inner);
-                return ` KEEP${keepStash.length - 1} `;
+                return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
             });
         }
-        s = (s.match(/\sKEEP\d+\s/g) || []).join('\n\n');
+        s = (s.match(/\s*\u0000ST_KEEP_\d+\u0000\s*/g) || []).join('\n\n');
     } else {
         // M0/M1：轻量卫生 —— 删注释（上步已做）、孤立/自闭合标记；配对标签原样保留。
         const pairs = [];
@@ -201,7 +222,15 @@ export function stripTags(raw, opts = {}) {
         let prev;
         do {
             prev = s;
-            s = s.replace(/ KEEP(\d+) /g, (_m, idx) => keepStash[+idx] ?? '');
+            s = s.replace(/\u0000ST_KEEP_(\d+)\u0000/g, (_m, idx) => keepStash[+idx] ?? '');
+            // A kept block may contain another keep block.  Re-scan restored
+            // content so the result is independent of keepTags configuration order.
+            for (const name of keep) {
+                s = replaceBalancedTagBlocks(s, name, (_block, inner) => {
+                    keepStash.push(inner);
+                    return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
+                });
+            }
         } while (s !== prev);
     }
 
