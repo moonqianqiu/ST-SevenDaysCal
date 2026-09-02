@@ -18,7 +18,7 @@
 
 import { getContext } from '../../../extensions.js';
 import { eventSource, event_types } from '../../../../script.js';
-import { normalizeTagNames } from './utils/tag-names.js';
+import { normalizeTagNames, TAG_NAME_SOURCE } from './utils/tag-names.js';
 import { diagnosticMessage, safeDiagnosticLog } from './api/diagnostics.js';
 
 const MEMORY_KEY = 'sp-memory';
@@ -69,13 +69,14 @@ function jobSignal() {
     if (b && !a) return { signal: b, dispose: null };
     if (a.aborted || b.aborted) return { signal: a.aborted ? a : b, dispose: null };
     const combined = new AbortController();
-    const relay = () => combined.abort();
+    const relayA = () => combined.abort(a.reason ?? 'external-abort');
+    const relayB = () => combined.abort(b.reason ?? 'external-abort');
     const dispose = () => {
-        a.removeEventListener('abort', relay);
-        b.removeEventListener('abort', relay);
+        a.removeEventListener('abort', relayA);
+        b.removeEventListener('abort', relayB);
     };
-    a.addEventListener('abort', relay, { once: true });
-    b.addEventListener('abort', relay, { once: true });
+    a.addEventListener('abort', relayA, { once: true });
+    b.addEventListener('abort', relayB, { once: true });
     return { signal: combined.signal, dispose };
 }
 
@@ -204,7 +205,6 @@ export function stripTags(raw, opts = {}) {
     const keep  = normalizeTagNames(opts.keepTags  ?? '');
     const extra = normalizeTagNames(opts.extraTags ?? '');
     const keepStash = [];
-
     // 1. 移除 HTML/XML 注释（通用）
     let s = String(raw).replace(/<!--[\s\S]*?-->/g, '');
 
@@ -229,7 +229,7 @@ export function stripTags(raw, opts = {}) {
         // 必须用栈式 replaceBalancedTagBlocks 提取每对平衡块（栈天然匹配最外层配对）。
         const pairs = [];
         const names = new Set();
-        const nameRx = /<([\p{L}][\p{L}\p{N}_~-]*)/gu;
+        const nameRx = new RegExp(`<(${TAG_NAME_SOURCE})`, 'gu');
         let m;
         while ((m = nameRx.exec(s))) names.add(m[1].toLowerCase());
         for (const name of names) {
@@ -238,7 +238,7 @@ export function stripTags(raw, opts = {}) {
                 return `\u0000P${pairs.length - 1}\u0000`;
             });
         }
-        s = s.replace(/<\/?[\p{L}][\p{L}\p{N}_~-]*(?:\s[^>]*)?\/?>/gu, '');
+        s = s.replace(new RegExp(`<\\/?${TAG_NAME_SOURCE}(?:\\s[^>]*)?\\/?>`, 'gu'), '');
         s = s.replace(/\u0000P(\d+)\u0000/g, (_m, i) => pairs[+i] ?? '');
     }
 
@@ -772,13 +772,13 @@ export async function rebuildAll(onProgress) {
     }
 }
 
-export function abortRebuild() { _abortController?.abort(); }
+export function abortRebuild() { _abortController?.abort('manual-abort'); }
 
-export function abortAll() {
+export function abortAll(reason = 'reset') {
     _lifecycleEpoch += 1;
     _queue = [];
-    try { _abortController?.abort(); } catch {}
-    try { _jobAbortController?.abort(); } catch {}
+    try { _abortController?.abort(reason); } catch {}
+    try { _jobAbortController?.abort(reason); } catch {}
     _abortController = null;
     _jobAbortController = new AbortController();
 }
@@ -826,7 +826,7 @@ function onMessageMutated(mesId) {
 }
 
 function onChatChanged() {
-    abortAll();
+    abortAll('chat-boundary');
 }
 
 // ─── Public init ─────────────────────────────────────────────────────────────
