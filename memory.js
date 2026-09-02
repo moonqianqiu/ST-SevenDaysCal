@@ -43,6 +43,7 @@ let _queue = [];
 let _running = false;
 let _abortController = null;      // reserved for rebuild flow (see abortRebuild)
 let _jobAbortController = null;   // shared signal for per-job fetches; aborted on CHAT_CHANGED
+const _jobSignalDisposes = new WeakMap(); // combined signal -> source relay cleanup
 let _isRebuilding = false;        // block every persist while rebuildAll holds uncommitted memory
 let _lifecycleEpoch = 0;          // invalidates late completions even when upstream ignores AbortSignal
 
@@ -59,25 +60,38 @@ function builtInMemoryEnabled() {
 // 与 _abortController（用户点「中止」时掐，重构/补漏用）。历史 bug：fetch 只绑了前者，
 // 用户点中止只能在「两组之间」生效，当前那次 LLM 调用掐不断 → 感觉「点了没反应」。
 // 不依赖 AbortSignal.any（老移动端浏览器未必有），手动串一个组合 controller，任一 abort 即 abort。
-// dispose 由调用方在请求完成（成功/失败/中止）后调用，移除两路监听器。
-// 单源路径（a||b 之一为 null）无新建 controller，dispose = null 安全。
+// 双源路径创建组合 signal；调用方在请求结束时通过 disposeJobSignal 清理 source relay。
+// Abort 时组合 signal 自己也会触发清理，覆盖调用方没有走到成功路径的情况。
 function jobSignal() {
     const a = _jobAbortController?.signal;
     const b = _abortController?.signal;
-    if (!a && !b) return { signal: undefined, dispose: null };
-    if (a && !b) return { signal: a, dispose: null };
-    if (b && !a) return { signal: b, dispose: null };
-    if (a.aborted || b.aborted) return { signal: a.aborted ? a : b, dispose: null };
+    if (!a && !b) return undefined;
+    if (a && !b) return a;
+    if (b && !a) return b;
+    if (a.aborted || b.aborted) return a.aborted ? a : b;
     const combined = new AbortController();
     const relayA = () => combined.abort(a.reason ?? 'external-abort');
     const relayB = () => combined.abort(b.reason ?? 'external-abort');
+    a.addEventListener('abort', relayA, { once: true });
+    b.addEventListener('abort', relayB, { once: true });
     const dispose = () => {
         a.removeEventListener('abort', relayA);
         b.removeEventListener('abort', relayB);
     };
-    a.addEventListener('abort', relayA, { once: true });
-    b.addEventListener('abort', relayB, { once: true });
-    return { signal: combined.signal, dispose };
+    combined.signal.addEventListener('abort', () => {
+        dispose();
+        _jobSignalDisposes.delete(combined.signal);
+    }, { once: true });
+    _jobSignalDisposes.set(combined.signal, dispose);
+    return combined.signal;
+}
+
+function disposeJobSignal(signal) {
+    const dispose = _jobSignalDisposes.get(signal);
+    if (dispose) {
+        dispose();
+        _jobSignalDisposes.delete(signal);
+    }
 }
 
 // ─── Utility: fast non-crypto hash ───────────────────────────────────────────
@@ -482,16 +496,16 @@ async function runL0(groupKey, { queueL1 = true } = {}) {
     const chatIdSnap = getContext().chatId;
     const messages = buildL0Prompt(prevSummary, group.floors);
     let response = '';
-    const { signal, dispose } = jobSignal();
+    const signal = jobSignal();
     try {
         response = await _callApi(messages, signal);
     } catch (err) {
-        if (err?.name === 'AbortError') { dispose?.(); return false; }
-        dispose?.();
+        if (err?.name === 'AbortError') return false;
         recordFailure(groupKey, err, 'request');
         return false;
+    } finally {
+        disposeJobSignal(signal);
     }
-    dispose?.();
 
     // Guard: don't write results into a different chat's metadata
     if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap) return false;
@@ -576,17 +590,17 @@ async function runL1(range) {
     const chatIdSnap = getContext().chatId;
     const messages = buildL1Prompt(entries);
     let response = '';
-    const { signal, dispose } = jobSignal();
+    const signal = jobSignal();
     try {
         response = await _callApi(messages, signal);
     } catch (err) {
-        if (err?.name === 'AbortError') { dispose?.(); return false; }
-        dispose?.();
+        if (err?.name === 'AbortError') return false;
         m.system.lastError = diagnosticMessage(err, { phase: 'request' });
         m.system.lastDiagnostic = safeDiagnosticLog('memory', 'request', err, { background: true });
         return false;
+    } finally {
+        disposeJobSignal(signal);
     }
-    dispose?.();
     if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap) return false;
     if (!response || response.length < 20) return false;
 
