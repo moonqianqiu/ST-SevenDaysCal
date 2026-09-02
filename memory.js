@@ -155,15 +155,22 @@ const escapeTagName = name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
 
 // Replace balanced blocks of one tag name.  A non-greedy regex cannot
 // distinguish nested same-name tags (e.g. <think>a<think>b</think>c</think>).
-function replaceBalancedTagBlocks(input, name, replacer) {
+// When dropUnclosed is true, an unmatched outer opening tag is removed through
+// the last inner close (or EOF if there is no close). This is intentionally
+// used only for extraTags: leaking a malformed <think> block is worse than
+// discarding its hidden prefix, while applying this rule to keepTags would be
+// unnecessarily lossy.
+function replaceBalancedTagBlocks(input, name, replacer, { dropUnclosed = false } = {}) {
     const safe = escapeTagName(name);
     const token = new RegExp(`<\\/?${safe}(?:\\s[^<>]*?)?\\/?>`, 'giu');
     const stack = [];
     const spans = [];
+    let lastCloseEnd = -1;
     let match;
     while ((match = token.exec(input))) {
         const raw = match[0];
         if (/^<\s*\//.test(raw)) {
+            lastCloseEnd = match.index + raw.length;
             if (stack.length) {
                 const open = stack.pop();
                 if (!stack.length) spans.push([open.start, open.end, match.index, match.index + raw.length]);
@@ -171,6 +178,15 @@ function replaceBalancedTagBlocks(input, name, replacer) {
         } else if (!/\/\s*>$/.test(raw)) {
             stack.push({ start: match.index, end: match.index + raw.length });
         }
+    }
+    if (dropUnclosed && stack.length) {
+        // If there was a close for an inner level, treat it as the recovery
+        // boundary and retain the suffix after it. This handles the common
+        // `<think>outer<think>inner</think>正文` shape without leaking the
+        // hidden prefix. With no close at all, discard through EOF.
+        const open = stack[0];
+        const end = lastCloseEnd > open.end ? lastCloseEnd : input.length;
+        spans.push([open.start, open.end, end, end]);
     }
     let out = input;
     for (let i = spans.length - 1; i >= 0; i--) {
@@ -194,7 +210,7 @@ export function stripTags(raw, opts = {}) {
 
     // 2. 删除 extra 列表标签及其内容（M1/M3；先于 keep，extra 恒优先）
     for (const name of extra) {
-        s = replaceBalancedTagBlocks(s, name, () => '');
+        s = replaceBalancedTagBlocks(s, name, () => '', { dropUnclosed: true });
     }
 
     // 3. M2/M3：keep 块保活 —— 剥掉 keep 标签的标记，内部内容（原样、不再二次清洗）入仓；
