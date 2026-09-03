@@ -32,7 +32,8 @@ const DESIRED_LINE_RX = /(?:我要|我想要|我可以要|想要|需要)(?:一|�
 const DESIRED_ALMANAC_RX = /(?:我要|我想要|我可以要|想要|需要)(?:一|一个|一条|个|条|张)?历(?!法)(?:卡片)?(?=$|[吗呢吧呀啊嘛呗]|[^\p{L}\p{N}_])/u;
 const NEGATED_DISCOURSE_THEN_CARD_RX = /(?:别|不要|不用|无需|不必|请勿|先别|暂(?:时)?不)(?:再)?(?:讨论|解释|分析|寒暄|评价|说明|聊聊|说说)(?:[，。？！；：,:;!?\s]*直接)*[，。？！；：,:;!?\s]*(?:给我|帮我|替我|为我|请)?(?:写|出|生|插|做|弄|生成|创建|输出|整理|转换?)(?:成|为)?(?:一|一个|一条|个|条|张)?(?:点|线|历法?)(?:卡片)?/;
 const SEMANTIC_CARD_RX = /结构化卡片|(?:历|历法)卡片/;
-const PURE_DISCUSSION_RX = /(?:为什么|为何|为啥|是不是|是否|怎么看|如何理解|什么意思|意味着|象征|合理(?:吗|么)|成立(?:吗|么)|怎么样|怎么回事|[？?]|吗$|呢$)/;
+const PURE_DISCUSSION_RX = /(?:为什么|为何|为啥|是不是|是否|怎么看|如何理解|什么意思|什么是|是什么|何为|指什么|介绍|解释|说明|意味着|象征|合理(?:吗|么)|成立(?:吗|么)|怎么样|怎么回事|[？?]|吗$|呢$)/;
+const EXPLANATORY_REQUEST_RX = /(?:解释|说明|介绍|讲讲|聊聊|说说).{0,20}(?:是什么|什么是|何为|什么叫|功能|用途|含义)|(?:什么是|何为|什么叫|指什么)/;
 const REQUEST_LANGUAGE_RX = /(?:给我|帮我|请|我要|我想|想要|需要|替我|为我|生成|新增|添加|新建|创建|记录|记下|保存|落地|安排|做|写|出|生|插|来|弄|输出|整理|转成|转换|改|修改|调整|设置|重做|重写)/;
 const DELEGATED_REQUEST_RX = /(?:给我|帮我|替我|为我|我要|我想|想要|我可以要|能不能.{0,4}给我|可以.{0,4}给我)/;
 const QUOTED_CARD_MENTION_RX = /(?:例如|比如|例子|举例|引用)[^"“‘\n]{0,16}["“‘][^"”’\n]{0,80}(?:点|线|历|卡片)[^"”’\n]{0,80}["”’]|["“‘][^"”’\n]{0,80}(?:点|线|历|卡片)[^"”’\n]{0,80}["”’].{0,32}(?:这句话|这个词|例子|引用|说法|表达|意思|说明|句式|比喻|你觉得|怎么回答|不用执行|不要执行)/;
@@ -103,6 +104,7 @@ export function classifySpaceIntent(userMsg, historySnapshot = []) {
         || QUOTED_CARD_MENTION_RX.test(message)
         || MENTION_ONLY_RX.test(message)
         || EVALUATION_RX.test(message)
+        || (EXPLANATORY_REQUEST_RX.test(message) && !directSemanticRequest && !delegatedCardRequest)
         || (PURE_DISCUSSION_RX.test(message) && !REQUEST_LANGUAGE_RX.test(message) && !directSemanticRequest && !delegatedCardRequest);
     return Object.freeze({
         action: semanticCardCandidate && !reliableDiscussion ? 'semantic-route' : 'discuss',
