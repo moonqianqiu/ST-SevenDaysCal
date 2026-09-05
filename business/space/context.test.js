@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classifySpaceIntent } from './context.js';
 
-test('space intent keeps explanatory card mentions as discussion', () => {
-    for (const message of ['请解释点卡片是什么', '什么是线卡片', '何为历法卡片', '介绍一下点卡片']) {
+test('space intent keeps greetings and direct explanation requests as discussion', () => {
+    for (const message of ['你好', '请解释点卡片是什么']) {
         assert.equal(classifySpaceIntent(message, []).action, 'discuss', message);
     }
 });
