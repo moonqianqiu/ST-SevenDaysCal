@@ -18,7 +18,7 @@
 
 import { getContext } from '../../../extensions.js';
 import { eventSource, event_types } from '../../../../script.js';
-import { normalizeTagNames, TAG_NAME_SOURCE } from './utils/tag-names.js';
+import { LITERAL_DOUBLE_BRACKET_RULE, normalizeTagRules, TAG_NAME_SOURCE } from './utils/tag-names.js';
 import { diagnosticMessage, safeDiagnosticLog } from './api/diagnostics.js';
 
 const MEMORY_KEY = 'sp-memory';
@@ -163,10 +163,17 @@ function persist() {
 //               （keep 块被非 keep 标签包裹时救回占位符）。
 //   M3 混合   ：先删 extra（可穿透进 keep 块内部，恒优先于 keep）→ 再按 M2。
 //
-// 配置：逗号分隔的裸标签名（可带或省略首尾 <>，normalizeTagNames 自动剥除）。
+// 配置：逗号分隔的裸标签名（可带或省略首尾 <>，normalizeTagRules 自动剥除）。
+// 另支持固定规则 [[...]]，用于匹配双中括号包裹；未闭合时保留原文。
 // 默认两列表均为空 = M0；配置任一列表即启用对应模式的内容级过滤。
 
 const escapeTagName = name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const replaceLiteralDoubleBracketBlocks = (text, replacement) => String(text).replace(/\[\[([\s\S]*?)\]\]/g, replacement);
+
+export function normalizeTagList(csv) {
+    return normalizeTagRules(csv);
+}
+const parseTagList = normalizeTagList;
 
 // Replace balanced blocks of one tag name.  A non-greedy regex cannot
 // distinguish nested same-name tags (e.g. <think>a<think>b</think>c</think>).
@@ -216,14 +223,19 @@ function replaceBalancedTagBlocks(input, name, replacer, { dropUnclosed = false 
 export function stripTags(raw, opts = {}) {
     if (!raw) return '';
 
-    const keep  = normalizeTagNames(opts.keepTags  ?? '');
-    const extra = normalizeTagNames(opts.extraTags ?? '');
+    const keep  = parseTagList(opts.keepTags  ?? '');
+    const extra = parseTagList(opts.extraTags ?? '');
     const keepStash = [];
     // 1. 移除 HTML/XML 注释（通用）
     let s = String(raw).replace(/<!--[\s\S]*?-->/g, '');
 
     // 2. 删除 extra 列表标签及其内容（M1/M3；先于 keep，extra 恒优先）
     for (const name of extra) {
+        if (name === LITERAL_DOUBLE_BRACKET_RULE) {
+            // 只匹配成对双中括号；未闭合输入原样保留，避免吞掉后文。
+            s = replaceLiteralDoubleBracketBlocks(s, '');
+            continue;
+        }
         s = replaceBalancedTagBlocks(s, name, () => '', { dropUnclosed: true });
     }
 
@@ -231,6 +243,13 @@ export function stripTags(raw, opts = {}) {
     //    保活块之外的一切（非 keep 标签块与裸文本）全部剔除，仅拼回占位符。
     if (keep.length) {
         for (const name of keep) {
+            if (name === LITERAL_DOUBLE_BRACKET_RULE) {
+                s = replaceLiteralDoubleBracketBlocks(s, (_block, inner) => {
+                    keepStash.push(inner);
+                    return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
+                });
+                continue;
+            }
             s = replaceBalancedTagBlocks(s, name, (block, inner) => {
                 keepStash.push(inner);
                 return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
@@ -267,6 +286,13 @@ export function stripTags(raw, opts = {}) {
             // A kept block may contain another keep block.  Re-scan restored
             // content so the result is independent of keepTags configuration order.
             for (const name of keep) {
+                if (name === LITERAL_DOUBLE_BRACKET_RULE) {
+                    s = replaceLiteralDoubleBracketBlocks(s, (_block, inner) => {
+                        keepStash.push(inner);
+                        return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
+                    });
+                    continue;
+                }
                 s = replaceBalancedTagBlocks(s, name, (_block, inner) => {
                     keepStash.push(inner);
                     return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
