@@ -18,7 +18,6 @@
 
 import { getContext } from '../../../extensions.js';
 import { eventSource, event_types } from '../../../../script.js';
-import { LITERAL_DOUBLE_BRACKET_RULE, normalizeTagRules, TAG_NAME_SOURCE } from './utils/tag-names.js';
 import { diagnosticMessage, safeDiagnosticLog } from './api/diagnostics.js';
 import { getChatRoot, persistExternalRoots, registerExternalStorageContext } from './runtime/external-chat-storage.js';
 
@@ -172,143 +171,12 @@ function persist() {
 // 另支持固定规则 [[...]]，用于匹配双中括号包裹；未闭合时保留原文。
 // 默认两列表均为空 = M0；配置任一列表即启用对应模式的内容级过滤。
 
-const escapeTagName = name => String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const replaceLiteralDoubleBracketBlocks = (text, replacement) => String(text).replace(/\[\[([\s\S]*?)\]\]/g, replacement);
-
-export function normalizeTagList(csv) {
-    return normalizeTagRules(csv);
-}
-const parseTagList = normalizeTagList;
-
-// Replace balanced blocks of one tag name.  A non-greedy regex cannot
-// distinguish nested same-name tags (e.g. <think>a<think>b</think>c</think>).
-// When dropUnclosed is true, an unmatched outer opening tag is removed through
-// the last inner close (or EOF if there is no close). This is intentionally
-// used only for extraTags: leaking a malformed <think> block is worse than
-// discarding its hidden prefix, while applying this rule to keepTags would be
-// unnecessarily lossy.
-function replaceBalancedTagBlocks(input, name, replacer, { dropUnclosed = false } = {}) {
-    const safe = escapeTagName(name);
-    const token = new RegExp(`<\\/?${safe}(?:\\s[^<>]*?)?\\/?>`, 'giu');
-    const stack = [];
-    const spans = [];
-    let lastCloseEnd = -1;
-    let match;
-    while ((match = token.exec(input))) {
-        const raw = match[0];
-        if (/^<\s*\//.test(raw)) {
-            lastCloseEnd = match.index + raw.length;
-            if (stack.length) {
-                const open = stack.pop();
-                if (!stack.length) spans.push([open.start, open.end, match.index, match.index + raw.length]);
-            }
-        } else if (!/\/\s*>$/.test(raw)) {
-            stack.push({ start: match.index, end: match.index + raw.length });
-        }
-    }
-    if (dropUnclosed && stack.length) {
-        // If there was a close for an inner level, treat it as the recovery
-        // boundary and retain the suffix after it. This handles the common
-        // `<think>outer<think>inner</think>正文` shape without leaking the
-        // hidden prefix. With no close at all, discard through EOF.
-        const open = stack[0];
-        const end = lastCloseEnd > open.end ? lastCloseEnd : input.length;
-        spans.push([open.start, open.end, end, end]);
-    }
-    let out = input;
-    for (let i = spans.length - 1; i >= 0; i--) {
-        const [start, openEnd, closeStart, end] = spans[i];
-        const block = out.slice(start, end);
-        const inner = out.slice(openEnd, closeStart);
-        out = out.slice(0, start) + replacer(block, inner) + out.slice(end);
-    }
-    return out;
-}
-
-export function stripTags(raw, opts = {}) {
-    if (!raw) return '';
-
-    const keep  = parseTagList(opts.keepTags  ?? '');
-    const extra = parseTagList(opts.extraTags ?? '');
-    const keepStash = [];
-    // 1. 移除 HTML/XML 注释（通用）
-    let s = String(raw).replace(/<!--[\s\S]*?-->/g, '');
-
-    // 2. 删除 extra 列表标签及其内容（M1/M3；先于 keep，extra 恒优先）
-    for (const name of extra) {
-        if (name === LITERAL_DOUBLE_BRACKET_RULE) {
-            // 只匹配成对双中括号；未闭合输入原样保留，避免吞掉后文。
-            s = replaceLiteralDoubleBracketBlocks(s, '');
-            continue;
-        }
-        s = replaceBalancedTagBlocks(s, name, () => '', { dropUnclosed: true });
-    }
-
-    // 3. M2/M3：keep 块保活 —— 剥掉 keep 标签的标记，内部内容（原样、不再二次清洗）入仓；
-    //    保活块之外的一切（非 keep 标签块与裸文本）全部剔除，仅拼回占位符。
-    if (keep.length) {
-        for (const name of keep) {
-            if (name === LITERAL_DOUBLE_BRACKET_RULE) {
-                s = replaceLiteralDoubleBracketBlocks(s, (_block, inner) => {
-                    keepStash.push(inner);
-                    return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
-                });
-                continue;
-            }
-            s = replaceBalancedTagBlocks(s, name, (block, inner) => {
-                keepStash.push(inner);
-                return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
-            });
-        }
-        s = (s.match(/\s*\u0000ST_KEEP_\d+\u0000\s*/g) || []).join('\n\n');
-    } else {
-        // M0/M1：轻量卫生 —— 删注释（上步已做）、孤立/自闭合标记；配对标签原样保留。
-        // 关键：非贪婪正则无法处理嵌套同名（<content>…<content>…</content>…</content>），
-        // 必须用栈式 replaceBalancedTagBlocks 提取每对平衡块（栈天然匹配最外层配对）。
-        const pairs = [];
-        const names = new Set();
-        const nameRx = new RegExp(`<(${TAG_NAME_SOURCE})`, 'gu');
-        let m;
-        while ((m = nameRx.exec(s))) names.add(m[1].toLowerCase());
-        for (const name of names) {
-            s = replaceBalancedTagBlocks(s, name, block => {
-                pairs.push(block);
-                return `\u0000P${pairs.length - 1}\u0000`;
-            });
-        }
-        s = s.replace(new RegExp(`<\\/?${TAG_NAME_SOURCE}(?:\\s[^>]*)?\\/?>`, 'gu'), '');
-        s = s.replace(/\u0000P(\d+)\u0000/g, (_m, i) => pairs[+i] ?? '');
-    }
-
-    // 4. 恢复 keep 占位符。
-    // do-while：兼容「两个 keep 名互相嵌套」时，后存的整块内容里以文本形式嵌着
-    // 先存的占位符（如 konatan 包裹先存的 content）；引用总指向更早创建的索引，必收敛。
-    {
-        let prev;
-        do {
-            prev = s;
-            s = s.replace(/\u0000ST_KEEP_(\d+)\u0000/g, (_m, idx) => keepStash[+idx] ?? '');
-            // A kept block may contain another keep block.  Re-scan restored
-            // content so the result is independent of keepTags configuration order.
-            for (const name of keep) {
-                if (name === LITERAL_DOUBLE_BRACKET_RULE) {
-                    s = replaceLiteralDoubleBracketBlocks(s, (_block, inner) => {
-                        keepStash.push(inner);
-                        return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
-                    });
-                    continue;
-                }
-                s = replaceBalancedTagBlocks(s, name, (_block, inner) => {
-                    keepStash.push(inner);
-                    return `\u0000ST_KEEP_${keepStash.length - 1}\u0000`;
-                });
-            }
-        } while (s !== prev);
-    }
-
-    // 5. 折叠多余换行并修剪（通用）
-    return s.replace(/\n{3,}/g, '\n\n').trim();
-}
+// 四模式合同（M0 直通 / M1 仅extra / M2 仅keep / M3 混合）与树形实现已抽至
+// runtime/tag-sanitizer.js，行为由 runtime/tag-sanitizer.golden.json 金样锁定。
+// import + re-export：调用方 `memory.stripTags` 的访问路径与签名不变（本模块
+// getAiFloors 等内部调用也走同一绑定）。
+import { stripTags } from './runtime/tag-sanitizer.js';
+export { stripTags };
 
 // ─── Chat helpers ────────────────────────────────────────────────────────────
 function getChat() { return getContext().chat || []; }

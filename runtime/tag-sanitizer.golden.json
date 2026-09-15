@@ -1,0 +1,266 @@
+{
+  "note": "golden baseline from pre-refactor four-mode stripTags (memory.js @ merge dde98d9)",
+  "cases": [
+    {
+      "id": "m0-paired-kept",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前文<content>正文</content>后文",
+      "oldOutput": "前文<content>正文</content>后文"
+    },
+    {
+      "id": "m0-unclosed-open",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前文<content>正文",
+      "oldOutput": "前文正文"
+    },
+    {
+      "id": "m0-hygiene",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前<!--注释--><br/>文<content>正文</content>",
+      "oldOutput": "前文<content>正文</content>"
+    },
+    {
+      "id": "m0-attributes",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前言<div class=\"a\" data-x=\"1\">正文</div>尾",
+      "oldOutput": "前言<div class=\"a\" data-x=\"1\">正文</div>尾"
+    },
+    {
+      "id": "m0-attr-gt-in-value",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前言<div title=\"a>b\">正文</div>尾",
+      "oldOutput": "前言<div title=\"a>b\">正文</div>尾"
+    },
+    {
+      "id": "m0-nested-same-name",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "<content>a<content>b</content>c</content>外",
+      "oldOutput": "<content>a<content>b</content>c</content>外"
+    },
+    {
+      "id": "m0-cjk-tag",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前言<设定>世界观</设定>后文",
+      "oldOutput": "前言<设定>世界观</设定>后文"
+    },
+    {
+      "id": "m0-self-closing",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前<wx/>文中<br/>尾",
+      "oldOutput": "前文中尾"
+    },
+    {
+      "id": "m0-whitespace-fold",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前文\n\n\n\n<content>正文</content>\n\n\n\n后文",
+      "oldOutput": "前文\n\n<content>正文</content>\n\n后文"
+    },
+    {
+      "id": "m0-orphan-close",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前</content>文中",
+      "oldOutput": "前文中"
+    },
+    {
+      "id": "m1-extra-paired",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "开头<think>链</think>中<content>正文</content>尾",
+      "oldOutput": "开头中<content>正文</content>尾"
+    },
+    {
+      "id": "m1-extra-unclosed-eof",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "guard <think>abc tail",
+      "oldOutput": "guard"
+    },
+    {
+      "id": "m1-extra-unclosed-inner-close",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "<think>outer<think>inner</think>tail",
+      "oldOutput": "tail"
+    },
+    {
+      "id": "m1-extra-nested",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "<think>a<think>b</think>c</think>后文",
+      "oldOutput": "后文"
+    },
+    {
+      "id": "m1-other-paired-kept",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "aim<content>正文</content>",
+      "oldOutput": "aim<content>正文</content>"
+    },
+    {
+      "id": "m1-extra-attr",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "前<think data-x=\"1\">链</think>后",
+      "oldOutput": "前后"
+    },
+    {
+      "id": "m2-peel-verbatim",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "裸文本<content><data>d</data>正文</content>尾巴",
+      "oldOutput": "<data>d</data>正文"
+    },
+    {
+      "id": "m2-nested-same-name",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "<content>a<content>b</content>c</content>",
+      "oldOutput": "abc"
+    },
+    {
+      "id": "m2-case-insensitive",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "<Content>x</content>外",
+      "oldOutput": "x"
+    },
+    {
+      "id": "m2-keep-order-swap",
+      "opts": {
+        "keepTags": "data,content",
+        "extraTags": ""
+      },
+      "input": "<content><data>dd</data>正文</content>",
+      "oldOutput": "dd正文"
+    },
+    {
+      "id": "m2-keep-unclosed",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "前<content>正文",
+      "oldOutput": ""
+    },
+    {
+      "id": "m2-bracket-keep",
+      "opts": {
+        "keepTags": "[[...]]",
+        "extraTags": ""
+      },
+      "input": "x [[a b]] y",
+      "oldOutput": "a b"
+    },
+    {
+      "id": "m3-extra-pierces-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "think"
+      },
+      "input": "<content><think>链</think>正文</content>外",
+      "oldOutput": "正文"
+    },
+    {
+      "id": "m3-extra-unclosed-in-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "think"
+      },
+      "input": "<content><think>abc tail",
+      "oldOutput": ""
+    },
+    {
+      "id": "m3-both-nested",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "think"
+      },
+      "input": "<content>a<think>b</think>c</content>外",
+      "oldOutput": "ac"
+    },
+    {
+      "id": "m3-bracket-both",
+      "opts": {
+        "keepTags": "[[...]]",
+        "extraTags": "think"
+      },
+      "input": "x [[a <think>t</think>b]] y",
+      "oldOutput": "a b"
+    },
+    {
+      "id": "m3-keep-multi",
+      "opts": {
+        "keepTags": "content,data",
+        "extraTags": "think"
+      },
+      "input": "裸<content><data>d</data>正文</content>尾",
+      "oldOutput": "d正文"
+    },
+    {
+      "id": "brk-extra-paired",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "[[...]]"
+      },
+      "input": "前[[噪音]]中[[a [[b]] c]]尾",
+      "oldOutput": "前中 c]]尾"
+    },
+    {
+      "id": "brk-extra-unclosed",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "[[...]]"
+      },
+      "input": "guard [[open tail",
+      "oldOutput": "guard [[open tail"
+    }
+  ]
+}
