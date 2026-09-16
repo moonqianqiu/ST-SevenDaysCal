@@ -76,3 +76,4 @@
 - 本地 `master` 已合并上游至 `3.7.6moon`（合并提交 `dde98d9 merge: integrate upstream v3.7.6`），
   随后完成 stripTags 树形重构（`f7131e8 refactor: extract four-mode tag sanitizer to tree-based runtime/tag-sanitizer.js`），
   131 测试全绿。合并辅助分支 `backup/master-before-upstream-v3.7.6` / `integrate/upstream-v3.7.6` 可按需保留或清理。
+- 本地 `master` 已合并上游至 `3.7.7moon`
