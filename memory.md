@@ -1,102 +1,112 @@
-# 构画 · Moon 定制版 — 项目记忆（供 CLI 参考）
+# 构画 · Moon 定制版 — 项目记忆（供维护与 CLI 参考）
 
-本仓库是 [`atonal519/ST-SevenDaysCal`](https://github.com/atonal519/ST-SevenDaysCal) 的 fork（作者 moon 定制版），
-在 `master` 上叠加了"moon"专属改动。`origin = moonqianqiu`，`upstream = atonal519/ST-SevenDaysCal`。
+本仓库是 [`atonal519/ST-SevenDaysCal`](https://github.com/atonal519/ST-SevenDaysCal) 的 fork（作者 moon 定制版），在 `master` 分支上跟踪上游最新基线，并叠加了“moon”专属改动。`origin = moonqianqiu/ST-SevenDaysCal`，`upstream = atonal519/ST-SevenDaysCal`。
 
-> 用途：让其它 CLI / 会话在执行"合并上游""检查合并""改代码"等任务时，知道哪些本地改动是 **fork 存在的意义**、
-> 哪里会冲突、以及怎么确认合并没有吞掉本地改动。
+> **用途**：供后续会话/开发者在执行“合并上游”、“冲突裁决”、“代码维护”时，迅速掌握本 fork 的核心定制、版本惯例、冲突裁决规则以及架构设计决策，确保合并上游时不丢弃本地核心资产。
 
 ---
 
 ## 1. 同步与版本惯例
 
-- 合并上游前：`git branch backup/master-before-upstream-vX.Y.Z master` 备份，再在
-  `integrate/upstream-vX.Y.Z` 上 `git merge --no-ff vX.Y.Z`，最后快进合回 `master`。
-- 版本号：`manifest.json` 的 `version` = 上游版本号 + `moon` 后缀
-  （如 `3.6.9.1moon` / `3.7.0moon` / `3.7.2moon`）。**每次合并必然在 `manifest.json` 上冲突**，按此惯例解决为 `X.Y.Zmoon`。
-- 当前已合并到的上游版本会体现在 `manifest.json` 与 git tag，可用 `git describe --tags upstream/master` 查看上游最新。
+1. **版本号命名规范 (`manifest.json`)**：
+   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.10moon`**）；
+   - 每次合并上游必然在 `manifest.json` 的 `version` 行发生冲突，直接按此惯例解决为 `X.Y.Zmoon`。
+2. **分支与合并安全策略**：
+   - 合并上游前先建立备份分支：`git branch backup/master-before-upstream-vX.Y.Z master`；
+   - 在 `master` 分支执行 `--no-ff` 合并：`git merge --no-ff upstream/master`；
+   - 本地合并与自动化测试未完全通过前，严禁向远程 force push。
 
-## 2. 合并冲突热区（仅这两个文件会冲突）
+---
 
-| 文件 | 冲突点 | 解决方式 |
-|---|---|---|
-| `manifest.json` | `version` 行 | 取 `X.Y.Zmoon` |
-| `memory.js` State 声明区 | 本地新增 `_jobSignalDisposes`；上游删除了 `_isRebuilding`（改用 `_activeRebuild` / `_aiFloorSnapshot`） | **保留 `_jobSignalDisposes`，不要补回 `_isRebuilding`**（本地无任何依赖，上游已整体移除） |
-| `memory.js` `runL0` 的 catch | 上游 `recordFailure(..., 'request', m)`（上游给 `recordFailure` 新增 `memory` 形参）vs 本地旧写法 | 取上游那行 |
-| `memory.js` stripTags 区 | v3.7.6 起上游重写为树形 `parseSanitizerTree`，与本地实现冲突；v3.7.6 合并后本地已把清洗器整体抽出 | **取本地（现为 re-export 态）**，不要把上游 stripTags 实现搬回 `memory.js`；清洗行为归 `runtime/tag-sanitizer.js` 管 |
+## 2. 合并冲突热区与标准裁决表（合并上游必查）
 
-其余文件 git 都能自动合并，无需手动解决。
+每次合并上游发布版本时，通常仅在以下 2 个文件产生物理冲突，其余 30+ 业务文件绝大部分均由 Git 3-way 算法自动平滑合并：
+
+| 文件路径 | 冲突性质 | 解决裁决方式与保护要点 |
+| :--- | :--- | :--- |
+| `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.10moon`） |
+| `memory.js` | 状态声明区与 `jobSignal` 注释冲突 | **必须严格保留本地资产**：<br>1. 保留 `const _jobSignalDisposes = new WeakMap();`<br>2. 保留 `disposeJobSignal` 生命周期双向清理协议说明<br>3. 维持 `stripTags` re-export 状态，严禁退回上游旧正则<br>4. 吸收上游新特性（隐藏 AI 楼纳入、确认式落盘 `persistConfirmed`、完整性分类统计） |
 
 > **隐藏规则（易误判，合并时留意）——双中括号 `[[...]]`**：
-> `LITERAL_DOUBLE_BRACKET_RULE = '[[...]]'` 定义于 `utils/tag-names.js`（上游文件，不在下方 9 个本地产权清单内），
-> 是一个特殊配置字面量：它**不属于普通标签名正则 `TAG_NAME_SOURCE`**（`[` 非字母），却在清洗器里承担真实语义——
-> 用户在 keepTags / extraTags 填 `[[...]]` 即对 `[[...]]` 包裹块做清洗（keep 剥壳取内、extra 连内容删、内部递归解析支持嵌套与 extra 穿透）。
-> 本地 `runtime/tag-sanitizer.js` 的 token 解析与 `[[...]]` 行为都依赖 `utils/tag-names.js` 的 `TAG_NAME_SOURCE` / `LITERAL_DOUBLE_BRACKET_RULE` / `normalizeTagRules`。
-> **不要因为 `[[...]]` 不像标签名就当它无效/多余而删改**；`utils/tag-names.js` 是上游文件，保持与上游一致即可。
+> `LITERAL_DOUBLE_BRACKET_RULE = '[[...]]'` 定义于 `utils/tag-names.js`（上游文件）。它**不属于普通标签名正则**（`[` 非字母），但在清洗器中承担真实语义——用户填 `[[...]]` 即对双中括号包裹块做清洗（keep 剥壳取内、extra 连内容删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**，保持与上游一致即可。
 
-## 3. 必须保住的本地定制（合并时逐项复核）
+---
 
-- **`runtime/tag-sanitizer.js`**：四模式标签清洗器（M0 直通 / M1 仅 extra / M2 仅 keep / M3 混合），
-  树形实现（吸收上游 v3.7.6 单遍解析，节点存 raw token 支持逐字节复现）；行为由
-  `runtime/tag-sanitizer.golden.json`（重构前旧栈式实现的 29 例金样 + 2026-09 新增 11 例 = 40 例）锁定。
-  - 本地增强（上游/千千结都没有或不同，合并时勿"对齐"掉）：
-    ① token 正则引号感知 + 未闭合引号宽松兜底（三分支交替，`TAG_ATTR_SOURCE` / `TAG_ATTR_FALLBACK_SOURCE`；
-       千千结只有引号感知无兜底，未闭合引号会泄漏——待其 hotfix 合回 main 后同步）；
-    ② keep 子树内自闭合一律原样保留、extra 同名自闭合删除；
-    ③ collectKept / renderKeptInner 的 extra 恒优先结构（闭合/未闭合/`[[...]]` extra 包裹 keep 整块删；
-       keep 与 extra 同名时按 extra 优先——新配置由 index.js 保存校验拒绝，此处为历史脏数据兜底）。
-  - **未闭合 extra 的围堵语义（金样锁定，有意设计，勿当 bug 改）**：规则 = 吞到最后一个同名闭合、
-    仅保留其后残段；全程无同名闭合才吞到文末（`residueAfterLastSameNameClose`）。设计依据（2026-09-22 与
-    作者确认）：孤立开标记与被截断的思维链在字节上不可分、意图不可判定；泄漏是系统性污染（进上下文后
-    影响后续每次生成/摘要），误伤是局部且**可恢复**的（清洗只读、楼层原文未动，编辑楼层补一个闭合标签
-    即救回正文）——故选围堵。误伤窗口仅限"残缺开标记之后直到文末再无任何同名闭合"这一种情形。
-    对照：`[[...]]` 未闭合反而**保留原文不吞**（金样 m1-bracket-unclosed）——`[[` 在正文里常见、误吞风险高，
-    按"哪种错误更伤"逐规则定策略，两者都是有意选择。"吞到文末时输出诊断提示"（方案 D）已评估、用户暂未要求，未实现；
-    合并时勿把围堵"对齐"成剥壳留内容（那是 M0 对未闭合块的处理，语义不同：M0 剥壳留内容、M1/M3 围堵）。
-  - 验证：`node --test memory.sanitizer.test.js` 全绿（金样 40 例逐字节比对 + 四模式语义探针）。
-  - `memory.js` 仅剩 re-export：`grep -c 'export { stripTags }' memory.js` 应为 1。
-- **`memory.js`**：`disposeJobSignal` + `_jobSignalDisposes` 修复 jobSignal 监听器泄漏。
-- **`memory.sanitizer.test.js`**：本地独有测试文件，`node --test memory.sanitizer.test.js` 直接跑。
-- **`runtime/settings.js`**：`keepTags` 默认值由上游 `'content'` 改为 `''`（两栏皆空 = 不清洗）。全库不应残留 `keepTags: 'content'`。
-- **`index.js`**：设置面板「标签清洗」四模式说明文案 + 默认值回填 `''`。关键字符串：`两栏都留空＝不清洗`、
-  `只配此栏即只留各 keep 块的内部内容`、`可穿透进 keep 块内部`。
-  另有 `bindTagField` 保存校验：keep/extra 两栏含同名标签（含 `[[...]]`）时拒绝落存、回退旧值并
-  `showToast(..., true)` 报错——上游没有，勿"对齐"掉。
-- **`business/space/context.test.js`**：本地独有文件（上游没有），`node --test business/space/context.test.js` 直接跑。
+## 3. 必须保住的本地核心定制资产清单（Fork 存在的价值，合并时逐项复核）
 
-## 4. 已主动放弃、不要当成"丢失"补回的改动
+合并上游或重构时，以下 4 大定制模块为本地产权核心，**严禁被上游旧代码覆盖或对齐掉**：
 
-- 间·意图识别中"解释性提问判为 discuss"的早期本地实现，在合并上游 v3.6.5 时**整体取上游版本**放弃
-  （上游已实现同题规则 `PURE_EXPLANATION_RX` / `EXPLICIT_EXPLANATION_RX` / `EXPLICIT_GREETING_RX`）。
-  `business/space/context.js` 应保持**与上游逐字节一致**，不要为对齐本地早期逻辑而改它。
+### 3.1 四模式标签清洗器（`runtime/tag-sanitizer.js`）
+- **核心架构**：
+  - 树形单遍解析（`parseSanitizerTree`），节点记录 `openRaw`/`closeRaw`，支持 M0/M1 的逐字节保真复现；
+  - `memory.js` 仅保留重导出：`import { stripTags } from './runtime/tag-sanitizer.js'; export { stripTags };`。
+- **核心合同**：
+  - **M0（两栏皆空）**：直通不清洗，保留正文，仅做注释/孤立标记清理与折空行；
+  - **M1（仅 extra）**：成对删除 extra 标签及内容；未闭合 extra 吞至最后同名闭合或 EOF（噪音不泄漏）；
+  - **M2（仅 keep）**：剥壳保留 keep 块内容（内部不再二次清洗，嵌套子标签原样保留），块外裸文本丢弃；
+  - **M3（混合）**：extra 恒优先，无论在外层、包裹 keep 还是嵌在 keep 子树内一律整块剔除；同名 keep/extra 按 extra 优先；
+  - **三分支 token 正则**：`TAG_ATTR_SOURCE`（属性引号感知，值内 `>` 不截断）+ `TAG_ATTR_FALLBACK_SOURCE`（未闭合引号宽松兜底，等价旧正则截断行为，防止思维链泄漏）+ `[[...]]`；
+  - **自闭合标记**：keep 子树内自闭合 extra 标记连标记删除，非 extra 保留 `openRaw`。
+- **金样锁定**：
+  - 行为由 `runtime/tag-sanitizer.golden.json`（40 组金样）绝对锁定；
+  - 与兄弟仓库 `ST-MyriadKnots` 保持 100% 逐字节一致（两仓对拍 0 差异）。
 
-## 5. 合并验证清单（不污染工作区）
+### 3.2 `_jobSignalDisposes` 监听器防泄漏闭环（`memory.js`）
+- **上游缺陷背景**：
+  上游虽然在绑定 relay 监听器时添加了 `{ once: true }`，但该参数仅在真正触发 abort 时生效；在 99% 正常成功完成的请求中，`abort` 事件永不触发，导致未触发的监听器永久残留在长生命周期的 `_jobAbortController.signal` 上，随着批量重构或长时对话产生严重的闭包累积与内存泄漏。
+- **本地治本实现**：
+  - 维护 `const _jobSignalDisposes = new WeakMap();` 记录双向清理函数；
+  - 导出 `export function disposeJobSignal(signal)`；
+  - 在 `runL0` 与 `runL1` 的 `fetchGroupSummary` / `fetchChapterSummary` 外部包裹 `try ... finally { disposeJobSignal(signal); }`，实现无论成功还是失败，零监听器残留。必须誓死保住。
 
-1. `git fetch --all`，`git rev-list --left-right --count HEAD...upstream/master` 看领先/落后，`git merge-base` 找基准。
-2. `git merge-tree --write-tree HEAD upstream/master` 复算冲突与合并树（输出 tree 可用于后续比对，不碰工作区）。
-3. 逐文件核对本地资产：见第 3 节（stripTags 逐字节一致、keepTags `''`、文案、context.test.js 仍在）。
-4. **无静默吞改动**的两道反向校验：
-   - 合并结果相对 `upstream/master` 应只差 10 个本地产权文件：`.gitignore` / `business/space/context.test.js` /
-     `index.js` / `manifest.json` / `memory.js` / `memory.md` / `memory.sanitizer.test.js` / `runtime/settings.js` /
-     `runtime/tag-sanitizer.js` / `runtime/tag-sanitizer.golden.json`
-     （`git diff --stat upstream/master <tree>`）。
-   - 合并结果相对本地 `HEAD` **新增**的每一行都应能在 `upstream/master` 找到来源（逐行 `sort -u` + `comm -13`，排除 `<<<<<<<` 标记行）。
-   - 本地相对 merge-base（上次合并版本）**新增**且被合并掉落的行应为 0（`comm -23` 比对"本地新增行集合"与"合并结果"）。
-5. 在合并树上跑测试：`git archive <tree> | tar -x -C /tmp/merged`，再 `node --test` 6 个文件
-   （`memory.sanitizer.test.js` / `business/axis/axis.test.js` / `business/lines/lines.test.js` /
-   `business/point/point.test.js` / `business/space/context.test.js` / `business/memory/qianqianjie.test.js`）。
-   落地后于 `master` 再跑一遍确认（v3.7.8moon 基线 148 用例全绿；`qianqianjie.test.js` 是上游 3.7.7 带入的
-   上游文件，非本地产权，仅用于回归）。
-6. 解冲突后 `git grep '^<<<<<<<'` 确认零标记残留；`git diff --stat vX.Y.Z` 应只剩那 10 个本地产权文件。
+### 3.3 标签清洗设置项与 UI 保存校验
+- **默认值保护 (`runtime/settings.js`)**：
+  - `keepTags` 默认值必须为 `''`（两栏皆空 = 不清洗，全库严禁残留 `keepTags: 'content'` 默认）。
+- **设置面板与保存拦截器 (`index.js`)**：
+  - 设置面板文案必须包含关键指导字符串：`两栏都留空＝不清洗`、`只配此栏即只留各 keep 块的内部内容`、`可穿透进 keep 块内部`；
+  - `bindTagField` 保存校验：用户在保留/剔除两栏配置同名标签时，失焦自动求归一化交集（含 `[[...]]`），命中时**拒绝落存、输入框回退旧值**，并弹出 `showToast(..., true)` 错误提示，从源头杜绝非法配置存盘。
 
-> **千千结侧备忘**：`ST-MyriadKnots/src/memory-content-sanitizer.js` 已同步三分支兜底正则（`bc06be1` 后两边清洗器逐字节一致，已跑两仓对拍全绿）；其 hotfix 分支 `hotfix/regenerate-receipt-reuse` 上有部分相关实现，合并回 main 时注意序号冲突处理。
+### 3.4 本地专属单元测试文件
+- `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针；
+- `business/space/context.test.js`：空间意图识别与结构化卡片单测（上游没有）。
 
-## 6. 当前状态（执行合并任务时以 `git status` / `git log` 为准）
+---
 
-- 本地 `master` 已合并上游至 `3.7.8moon`
-  （合并提交 `a085c37`，上游 lightweight qqj recall）、`3.7.9moon`
-  （合并上游 v3.7.9 release 提交 `bf28d31`，涵盖隐藏 AI 楼纳入长期记忆、确认式落盘与中断保护、“间”历法卡防误触、剧情倾向配置）、
-  `3.7.10moon`（合并上游 v3.7.10 release 提交 `fced105`，涵盖坐标/收藏入口位置支持多选与自定义历法分槽防崩校验）。
-- 2026-09-22 完成清洗器三项强化 + 泄漏修复：引号感知属性正则（含未闭合引号兜底）、
-  keep 子树内 self-closing extra 删除、extra 恒优先结构（修闭合/`[[...]]` extra 包裹 keep 的泄漏）、
-  同名 keep/extra 走 extra 优先 + index.js 设置保存校验；金样 29→40 例。两仓 40 例金样逐字节对拍 100% 保持 0 差异。
+## 4. 已主动放弃、不要当成“丢失”补回的改动
+
+- **间·意图识别**：“解释性提问判为 discuss”的早期本地实现已在合并上游 v3.6.5 时**整体取上游版本放弃**（上游已实现更完善的 `PURE_EXPLANATION_RX` / `EXPLICIT_EXPLANATION_RX`）。`business/space/context.js` 应保持**与上游逐字节一致**，切勿为了对齐本地早期逻辑而反向修改。
+
+---
+
+## 5. 合并验证清单与验收标准（4 道硬性门禁）
+
+每次完成代码合并后，必须逐项核实以下 4 道放行门禁：
+
+1. **冲突标记零残留**：
+   ```bash
+   git grep -n '^<<<<<<<'
+   ```
+   *标准*：匹配数为 0。
+2. **本地资产文件清单校验**：
+   合并结果相对 `upstream/master` 应只差以下 **10 个本地产权文件**（`git diff --stat upstream/master`）：
+   `.gitignore`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.md`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`。
+3. **全量自动化测试回归套件**：
+   ```bash
+   node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/lines/lines.test.js business/point/point.test.js business/memory/qianqianjie.test.js
+   ```
+   *标准*：**148/148 全部全绿（通过率 100%，0 失败）**。
+4. **与 ST-MyriadKnots 跨仓终验对拍**：
+   运行 40 例金样跨仓比对脚本，验证与 `ST-MyriadKnots/src/memory-content-sanitizer.js` 输出 **0 差异、100% 逐字节一致**。
+
+---
+
+## 6. 当前仓库状态底数（基线备忘）
+
+- **当前分支**：`master`
+- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.10`，提交 `fced105`）；
+- **当前版本**：`manifest.json` 版本号 **`3.7.10moon`**；
+- **最近提交历史**：
+  - `2ad69f1`：`merge: integrate upstream v3.7.10`（坐标入口多选配置与自定义历法分槽防崩）；
+  - `88f45b4`：`merge: integrate upstream v3.7.9`（隐藏 AI 楼纳入长期记忆、确认式落盘与中断保护、剧情倾向）；
+  - `bc06be1`：清洗器三项强化与泄漏修复（三分支正则、40 例金样、同名 UI 校验）；
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.4.3，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持 100% 逐字节一致。
