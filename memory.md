@@ -88,7 +88,7 @@
 
 ## 6. 当前状态（执行合并任务时以 `git status` / `git log` 为准）
 
-- 本地 `master` 已合并上游至 `3.7.7moon`（qqj prompt 快照，`125dcea`）、`3.7.8moon`
+- 本地 `master` 已合并上游至 `3.7.8moon`
   （合并提交 `a085c37`，上游 lightweight qqj recall）。
 - 2026-09-22 完成清洗器三项强化 + 泄漏修复：引号感知属性正则（含未闭合引号兜底）、
   keep 子树内 self-closing extra 删除、extra 恒优先结构（修闭合/`[[...]]` extra 包裹 keep 的泄漏）、
