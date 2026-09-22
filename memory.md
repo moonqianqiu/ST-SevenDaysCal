@@ -89,10 +89,7 @@
    上游文件，非本地产权，仅用于回归）。
 6. 解冲突后 `git grep '^<<<<<<<'` 确认零标记残留；`git diff --stat vX.Y.Z` 应只剩那 10 个本地产权文件。
 
-> **千千结侧待同步**：`ST-MyriadKnots/src/memory-content-sanitizer.js` 与本清洗器同源，但只有引号感知、
-> 没有未闭合引号兜底（其 :19 `TAG_ATTR_SOURCE` 对未闭合引号标签整体失配 → M1 下噪音泄漏），也没有
-> 本地的三分支兜底。该仓库当前在 hotfix 分支——待其合回 main/master 后，把三分支 token 正则同步过去
-> （并互相对拍：除未闭合引号类用例外两边应逐字节一致）。
+> **千千结侧备忘**：`ST-MyriadKnots/src/memory-content-sanitizer.js` 已同步三分支兜底正则（`bc06be1` 后两边清洗器逐字节一致，已跑两仓对拍全绿）；其 hotfix 分支 `hotfix/regenerate-receipt-reuse` 上有部分相关实现，合并回 main 时注意序号冲突处理。
 
 ## 6. 当前状态（执行合并任务时以 `git status` / `git log` 为准）
 
