@@ -45,6 +45,14 @@
     ② keep 子树内自闭合一律原样保留、extra 同名自闭合删除；
     ③ collectKept / renderKeptInner 的 extra 恒优先结构（闭合/未闭合/`[[...]]` extra 包裹 keep 整块删；
        keep 与 extra 同名时按 extra 优先——新配置由 index.js 保存校验拒绝，此处为历史脏数据兜底）。
+  - **未闭合 extra 的围堵语义（金样锁定，有意设计，勿当 bug 改）**：规则 = 吞到最后一个同名闭合、
+    仅保留其后残段；全程无同名闭合才吞到文末（`residueAfterLastSameNameClose`）。设计依据（2026-09-22 与
+    作者确认）：孤立开标记与被截断的思维链在字节上不可分、意图不可判定；泄漏是系统性污染（进上下文后
+    影响后续每次生成/摘要），误伤是局部且**可恢复**的（清洗只读、楼层原文未动，编辑楼层补一个闭合标签
+    即救回正文）——故选围堵。误伤窗口仅限"残缺开标记之后直到文末再无任何同名闭合"这一种情形。
+    对照：`[[...]]` 未闭合反而**保留原文不吞**（金样 m1-bracket-unclosed）——`[[` 在正文里常见、误吞风险高，
+    按"哪种错误更伤"逐规则定策略，两者都是有意选择。"吞到文末时输出诊断提示"（方案 D）已评估、用户暂未要求，未实现；
+    合并时勿把围堵"对齐"成剥壳留内容（那是 M0 对未闭合块的处理，语义不同：M0 剥壳留内容、M1/M3 围堵）。
   - 验证：`node --test memory.sanitizer.test.js` 全绿（金样 40 例逐字节比对 + 四模式语义探针）。
   - `memory.js` 仅剩 re-export：`grep -c 'export { stripTags }' memory.js` 应为 1。
 - **`memory.js`**：`disposeJobSignal` + `_jobSignalDisposes` 修复 jobSignal 监听器泄漏。
