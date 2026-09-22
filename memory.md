@@ -94,7 +94,8 @@
 ## 6. 当前状态（执行合并任务时以 `git status` / `git log` 为准）
 
 - 本地 `master` 已合并上游至 `3.7.8moon`
-  （合并提交 `a085c37`，上游 lightweight qqj recall）。
+  （合并提交 `a085c37`，上游 lightweight qqj recall）、`3.7.9moon`
+  （合并上游 v3.7.9 release 提交 `bf28d31`，涵盖隐藏 AI 楼纳入长期记忆、确认式落盘与中断保护、“间”历法卡防误触、剧情倾向配置）。
 - 2026-09-22 完成清洗器三项强化 + 泄漏修复：引号感知属性正则（含未闭合引号兜底）、
   keep 子树内 self-closing extra 删除、extra 恒优先结构（修闭合/`[[...]]` extra 包裹 keep 的泄漏）、
-  同名 keep/extra 走 extra 优先 + index.js 设置保存校验；金样 29→40 例。
+  同名 keep/extra 走 extra 优先 + index.js 设置保存校验；金样 29→40 例。两仓 40 例金样逐字节对拍 100% 保持 0 差异。
