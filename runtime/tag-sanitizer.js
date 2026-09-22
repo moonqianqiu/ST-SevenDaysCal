@@ -5,17 +5,31 @@
 //                其余配对块原样、裸文本保留；
 //   M2 仅 keep：keep 配对块剥壳、内部逐字保留（不再二次清洗；嵌套 keep 继续剥壳），
 //               keep 块之外的一切丢弃，多个 keep 块以空行连接；
-//   M3 混合：M2 基础上 extra 穿透 keep 子树（恒优先），双中括号 extra 同样穿透。
+//   M3 混合：M2 基础上 extra 恒优先——extra 块（含双中括号）无论处于根层、包裹 keep 块还是
+//            嵌在 keep 子树内，一律连内容删；keep 与 extra 配置了同名标签时同样按 extra 优先
+//            （设置面板保存时会拒绝此类配置，此处是历史脏数据的兜底语义）。
 // 实现：吸收上游 v3.7.6 的单遍 token 树（parseSanitizerTree 思路），
 //   节点额外记录 openRaw/closeRaw 以支持 M0/M1 的逐字节复现；渲染层完全按上表合同重写。
+//   token 正则引号感知（属性值内允许 `>`），未闭合引号由宽松兜底分支接管（与旧正则一致，
+//   噪音不泄漏）；keep 子树内自闭合标记：extra 删、其余原样保留。
 import { LITERAL_DOUBLE_BRACKET_RULE, normalizeTagRules, TAG_NAME_SOURCE } from '../utils/tag-names.js';
 
 const OPEN_NAME_RX = new RegExp(`^<\\/?(?:(${TAG_NAME_SOURCE}))`, 'u');
 const SELF_CLOSING_RX = /\/\s*>$/u;
 const COMMENT_RX = /<!--[\s\S]*?-->/g;
 
+// 属性段引号感知（双/单引号值内允许 `>`），避免 <div title="a>b"> 在首个 `>` 截断。
+// 交替顺序安全：兜底分支 [^>]* 永不跨过 `>`，引号感知分支可跨过引号内 `>`，
+// 两者同时命中时后者不长于前者，故兜底仅在引号感知整体失配（未闭合引号 + 后续 `>`）时接管，
+// 等价于回退旧正则行为（token 止于首个 `>`，extra 仍被吞、噪音不泄漏）。
+const TAG_ATTR_SOURCE = String.raw`(?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*`;
+const TAG_ATTR_FALLBACK_SOURCE = String.raw`(?:\s[^>]*)?`;
+
 function freshTokenRx() {
-    return new RegExp(`<\\/?${TAG_NAME_SOURCE}(?:\\s[^>]*)?\\/?>|\\[\\[([\\s\\S]*?)\\]\\]`, 'gu');
+    return new RegExp(
+        `<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_SOURCE}\\s*\\/?>`
+        + `|<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_FALLBACK_SOURCE}\\/?>`
+        + `|\\[\\[([\\s\\S]*?)\\]\\]`, 'gu');
 }
 
 // 单遍解析：标签 token / 双中括号 token 建树；文本段原样入 children。
@@ -110,21 +124,26 @@ function renderFlat(children, extraSet) {
     return out;
 }
 
-// keep 子树内部渲染（M2/M3）：嵌套 keep 剥壳；extra 穿透删；其余逐字保留
-// （自闭合标记原样保留——本地合同「内部不再二次清洗」；未闭合非 extra 块保留标记与内容）。
+// keep 子树内部渲染（M2/M3）：extra 恒优先（同名 keep/extra 也按 extra 删）；嵌套 keep 剥壳；
+// 其余逐字保留。自闭合标记：extra 删、其余原样保留 openRaw（合同「keep 内部不再二次清洗」，
+// keep 同名的自闭合标记如 <content/> 同样原样保留，而非按 keep 剥壳吞掉）；未闭合非 extra 块保留标记与内容。
 function renderKeptInner(children, keepSet, extraSet) {
     let out = '';
     for (const child of children) {
         if (typeof child === 'string') { out += child; continue; }
-        if (child.closed && keepSet.has(child.normalized)) { out += renderKeptInner(child.children, keepSet, extraSet); continue; }
         if (child.kind === 'bracket') {
             if (extraSet.has(child.name)) continue;
+            if (keepSet.has(child.normalized)) { out += renderKeptInner(child.children, keepSet, extraSet); continue; }
             out += `[[${renderKeptInner(child.children, keepSet, extraSet)}]]`;
             continue;
         }
-        if (child.selfClosing) { out += child.openRaw; continue; }
+        if (child.selfClosing) {
+            if (!extraSet.has(child.normalized)) out += child.openRaw;
+            continue;
+        }
         if (child.closed) {
             if (extraSet.has(child.normalized)) continue;
+            if (keepSet.has(child.normalized)) { out += renderKeptInner(child.children, keepSet, extraSet); continue; }
             out += child.openRaw + renderKeptInner(child.children, keepSet, extraSet) + child.closeRaw;
         } else if (extraSet.has(child.normalized)) {
             out += residueAfterLastSameNameClose(child, rest => renderKeptInner(rest, keepSet, extraSet));
@@ -135,13 +154,13 @@ function renderKeptInner(children, keepSet, extraSet) {
     return out;
 }
 
-// M2/M3 根收集：只输出 keep 配对块的内部内容（裸文本丢弃）；非 keep 块穿透搜寻；
-// 未闭合 extra 块视为已被 dropUnclosed 吞掉、不再下探；未闭合非 extra 块继续下探。
+// M2/M3 根收集：只输出 keep 配对块的内部内容（裸文本丢弃）；extra 块（闭合/未闭合/双中括号）
+// 一律整块跳过不下探——extra 恒优先，被 extra 包裹的 keep 块视同噪音删除；其余非 keep 块下探搜寻。
 function collectKept(children, keepSet, extraSet, out) {
     for (const child of children) {
         if (typeof child === 'string') continue;
+        if (extraSet.has(child.normalized)) continue;
         if (child.closed && keepSet.has(child.normalized)) { out.push(renderKeptInner(child.children, keepSet, extraSet)); continue; }
-        if (!child.closed && child.kind === 'xml' && extraSet.has(child.normalized)) continue;
         collectKept(child.children, keepSet, extraSet, out);
     }
 }

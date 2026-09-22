@@ -261,6 +261,105 @@
       },
       "input": "guard [[open tail",
       "oldOutput": "guard [[open tail"
+    },
+    {
+      "id": "m0-attr-gt-in-quoted-value",
+      "opts": {
+        "keepTags": "",
+        "extraTags": ""
+      },
+      "input": "前<div title=\"a>b\">正文</div>尾",
+      "oldOutput": "前<div title=\"a>b\">正文</div>尾"
+    },
+    {
+      "id": "m2-attr-gt-in-quoted-value",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "<content data-x=\"1>2\">真正文</content>",
+      "oldOutput": "真正文"
+    },
+    {
+      "id": "m1-extra-attr-gt-in-quoted-value",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "前<think data-x=\"1>2\">链条</think>后",
+      "oldOutput": "前后"
+    },
+    {
+      "id": "m3-self-closing-extra-inside-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "img"
+      },
+      "input": "<content>正文<img src=\"x\"/>尾</content>",
+      "oldOutput": "正文尾"
+    },
+    {
+      "id": "m1-extra-unterminated-quote-gt",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "前<think data-x=\"oops>噪音尾巴",
+      "oldOutput": "前"
+    },
+    {
+      "id": "m3-keep-inner-unterminated-quote",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "think"
+      },
+      "input": "<content><think data-x=\"a>b噪音</content>正文",
+      "oldOutput": ""
+    },
+    {
+      "id": "m1-extra-unterminated-quote-eof",
+      "opts": {
+        "keepTags": "",
+        "extraTags": "think"
+      },
+      "input": "eguard habit<think data-x=\"oops tail",
+      "oldOutput": "eguard habit<think data-x=\"oops tail"
+    },
+    {
+      "id": "m3-extra-wraps-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "think"
+      },
+      "input": "<think>思维链噪音<content>秘密</content>更多噪音</think>",
+      "oldOutput": ""
+    },
+    {
+      "id": "m3-bracket-extra-wraps-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "[[...]]"
+      },
+      "input": "[[<content>状态栏内容</content>]]",
+      "oldOutput": ""
+    },
+    {
+      "id": "m2-self-closing-keep-in-keep",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": ""
+      },
+      "input": "<content>正文<content/>尾巴</content>",
+      "oldOutput": "正文<content/>尾巴"
+    },
+    {
+      "id": "m3-same-name-extra-wins",
+      "opts": {
+        "keepTags": "content",
+        "extraTags": "content"
+      },
+      "input": "前<content>秘密</content>后",
+      "oldOutput": ""
     }
   ]
 }

@@ -38,14 +38,22 @@
 
 - **`runtime/tag-sanitizer.js`**：四模式标签清洗器（M0 直通 / M1 仅 extra / M2 仅 keep / M3 混合），
   树形实现（吸收上游 v3.7.6 单遍解析，节点存 raw token 支持逐字节复现）；行为由
-  `runtime/tag-sanitizer.golden.json`（重构前旧栈式实现生成的 29 例金样）锁定。
-  - 验证：`node --test memory.sanitizer.test.js` 全绿（金样比对 + 四模式语义探针）。
+  `runtime/tag-sanitizer.golden.json`（重构前旧栈式实现的 29 例金样 + 2026-09 新增 11 例 = 40 例）锁定。
+  - 本地增强（上游/千千结都没有或不同，合并时勿"对齐"掉）：
+    ① token 正则引号感知 + 未闭合引号宽松兜底（三分支交替，`TAG_ATTR_SOURCE` / `TAG_ATTR_FALLBACK_SOURCE`；
+       千千结只有引号感知无兜底，未闭合引号会泄漏——待其 hotfix 合回 main 后同步）；
+    ② keep 子树内自闭合一律原样保留、extra 同名自闭合删除；
+    ③ collectKept / renderKeptInner 的 extra 恒优先结构（闭合/未闭合/`[[...]]` extra 包裹 keep 整块删；
+       keep 与 extra 同名时按 extra 优先——新配置由 index.js 保存校验拒绝，此处为历史脏数据兜底）。
+  - 验证：`node --test memory.sanitizer.test.js` 全绿（金样 40 例逐字节比对 + 四模式语义探针）。
   - `memory.js` 仅剩 re-export：`grep -c 'export { stripTags }' memory.js` 应为 1。
 - **`memory.js`**：`disposeJobSignal` + `_jobSignalDisposes` 修复 jobSignal 监听器泄漏。
 - **`memory.sanitizer.test.js`**：本地独有测试文件，`node --test memory.sanitizer.test.js` 直接跑。
 - **`runtime/settings.js`**：`keepTags` 默认值由上游 `'content'` 改为 `''`（两栏皆空 = 不清洗）。全库不应残留 `keepTags: 'content'`。
 - **`index.js`**：设置面板「标签清洗」四模式说明文案 + 默认值回填 `''`。关键字符串：`两栏都留空＝不清洗`、
   `只配此栏即只留各 keep 块的内部内容`、`可穿透进 keep 块内部`。
+  另有 `bindTagField` 保存校验：keep/extra 两栏含同名标签（含 `[[...]]`）时拒绝落存、回退旧值并
+  `showToast(..., true)` 报错——上游没有，勿"对齐"掉。
 - **`business/space/context.test.js`**：本地独有文件（上游没有），`node --test business/space/context.test.js` 直接跑。
 
 ## 4. 已主动放弃、不要当成"丢失"补回的改动
@@ -60,20 +68,28 @@
 2. `git merge-tree --write-tree HEAD upstream/master` 复算冲突与合并树（输出 tree 可用于后续比对，不碰工作区）。
 3. 逐文件核对本地资产：见第 3 节（stripTags 逐字节一致、keepTags `''`、文案、context.test.js 仍在）。
 4. **无静默吞改动**的两道反向校验：
-   - 合并结果相对 `upstream/master` 应只差 9 个本地产权文件：`.gitignore` / `business/space/context.test.js` /
-     `index.js` / `manifest.json` / `memory.js` / `memory.sanitizer.test.js` / `runtime/settings.js` /
+   - 合并结果相对 `upstream/master` 应只差 10 个本地产权文件：`.gitignore` / `business/space/context.test.js` /
+     `index.js` / `manifest.json` / `memory.js` / `memory.md` / `memory.sanitizer.test.js` / `runtime/settings.js` /
      `runtime/tag-sanitizer.js` / `runtime/tag-sanitizer.golden.json`
      （`git diff --stat upstream/master <tree>`）。
    - 合并结果相对本地 `HEAD` **新增**的每一行都应能在 `upstream/master` 找到来源（逐行 `sort -u` + `comm -13`，排除 `<<<<<<<` 标记行）。
    - 本地相对 merge-base（上次合并版本）**新增**且被合并掉落的行应为 0（`comm -23` 比对"本地新增行集合"与"合并结果"）。
-5. 在合并树上跑测试：`git archive <tree> | tar -x -C /tmp/merged`，再 `node --test` 5 个文件
+5. 在合并树上跑测试：`git archive <tree> | tar -x -C /tmp/merged`，再 `node --test` 6 个文件
    （`memory.sanitizer.test.js` / `business/axis/axis.test.js` / `business/lines/lines.test.js` /
-   `business/point/point.test.js` / `business/space/context.test.js`）。落地后于 `master` 再跑一遍确认（合计约 131 用例全绿）。
-6. 解冲突后 `git grep '^<<<<<<<'` 确认零标记残留；`git diff --stat vX.Y.Z` 应只剩那 9 个本地产权文件。
+   `business/point/point.test.js` / `business/space/context.test.js` / `business/memory/qianqianjie.test.js`）。
+   落地后于 `master` 再跑一遍确认（v3.7.8moon 基线 148 用例全绿；`qianqianjie.test.js` 是上游 3.7.7 带入的
+   上游文件，非本地产权，仅用于回归）。
+6. 解冲突后 `git grep '^<<<<<<<'` 确认零标记残留；`git diff --stat vX.Y.Z` 应只剩那 10 个本地产权文件。
+
+> **千千结侧待同步**：`ST-MyriadKnots/src/memory-content-sanitizer.js` 与本清洗器同源，但只有引号感知、
+> 没有未闭合引号兜底（其 :19 `TAG_ATTR_SOURCE` 对未闭合引号标签整体失配 → M1 下噪音泄漏），也没有
+> 本地的三分支兜底。该仓库当前在 hotfix 分支——待其合回 main/master 后，把三分支 token 正则同步过去
+> （并互相对拍：除未闭合引号类用例外两边应逐字节一致）。
 
 ## 6. 当前状态（执行合并任务时以 `git status` / `git log` 为准）
 
-- 本地 `master` 已合并上游至 `3.7.6moon`（合并提交 `dde98d9 merge: integrate upstream v3.7.6`），
-  随后完成 stripTags 树形重构（`f7131e8 refactor: extract four-mode tag sanitizer to tree-based runtime/tag-sanitizer.js`），
-  131 测试全绿。合并辅助分支 `backup/master-before-upstream-v3.7.6` / `integrate/upstream-v3.7.6` 可按需保留或清理。
-- 本地 `master` 已合并上游至 `3.7.7moon`
+- 本地 `master` 已合并上游至 `3.7.7moon`（qqj prompt 快照，`125dcea`）、`3.7.8moon`
+  （合并提交 `a085c37`，上游 lightweight qqj recall）。
+- 2026-09-22 完成清洗器三项强化 + 泄漏修复：引号感知属性正则（含未闭合引号兜底）、
+  keep 子树内 self-closing extra 删除、extra 恒优先结构（修闭合/`[[...]]` extra 包裹 keep 的泄漏）、
+  同名 keep/extra 走 extra 优先 + index.js 设置保存校验；金样 29→40 例。

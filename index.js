@@ -3349,7 +3349,7 @@ function injectModal() {
                                         <div class="sp-mode-opt sp-tag-opt"><span>保留包裹符</span><input id="sp-mem-keeptags" class="sp-input sp-tag-input" type="text" placeholder="content" value=""></div>
                                         <p class="sp-cfg-hint">列表中标签的配对块<strong>剥掉标签标记、内部内容原样保留</strong>（内部不再二次清洗，如 <code>&lt;content&gt;</code> 里的 <code>&lt;data&gt;</code>/<code>&lt;plan&gt;</code> 会连标记保留）；<strong>keep 块之外的其余一切（其他标签块与标签外裸文本）全部剔除</strong>。只配此栏即只留各 keep 块的内部内容、清掉其余全部噪音。</p>
                                         <div class="sp-mode-opt sp-tag-opt"><span>剔除包裹符</span><input id="sp-mem-extratags" class="sp-input sp-tag-input" type="text" placeholder="think,reasoning" value=""></div>
-                                        <p class="sp-cfg-hint">标签<strong>连同内部内容一起删除</strong>（如思维链 <code>think</code> / <code>reasoning</code> / <code>[[...]]</code>），可穿透进 keep 块内部、恒优先于 keep；未闭合的双中括号会保留原文，不会吞掉后文。</p>
+                                        <p class="sp-cfg-hint">标签<strong>连同内部内容一起删除</strong>（如思维链 <code>think</code> / <code>reasoning</code> / <code>[[...]]</code>），可穿透进 keep 块内部、恒优先于 keep；未闭合的双中括号会保留原文，不会吞掉后文。两栏不能填相同标签（保存时会被拦截）。</p>
                                     </details>
                                     <details class="sp-settings-subsection sp-prompt-storyclock"><summary>时间戳提示词</summary>
                                         <p class="sp-cfg-hint" id="sp-storyclock-coordination">${storyClockStatusCopy(storyClockController.refresh())}</p>
@@ -7893,21 +7893,30 @@ function bindMemoryHandlers() {
     function sanitizeTagList(raw) {
         return normalizeTagRules(raw).join(',');
     }
-    function bindTagField(sel, key) {
+    function bindTagField(sel, key, otherKey) {
         // sel 是 #sp-mem-* 选择器串（设置区在 shadow 内）→ 必须 $in 绑定，否则不落存
         $in(sel).on('input', function () {
             getSettings()[key] = sanitizeTagList(this.value);
             saveSettingsDebounced();
         }).on('change', function () {
             const v = sanitizeTagList(this.value);
+            // keep/extra 不得同名：与另一栏求交集，命中即拒绝落存、回退旧值
+            // （清洗器侧另有 extra 恒优先兜底历史脏数据，见 runtime/tag-sanitizer.js）
+            const other = normalizeTagRules(getSettings()[otherKey] ?? '');
+            const clash = v ? normalizeTagRules(v).filter(name => other.includes(name)) : [];
+            if (clash.length) {
+                this.value = typeof getSettings()[key] === 'string' ? getSettings()[key] : '';
+                showToast(`「保留包裹符」与「剔除包裹符」两栏不能填相同标签：${clash.join(',')}。请先从另一栏移除。`, null, true);
+                return;
+            }
             getSettings()[key] = v;
             this.value = v;                 // 失焦才回写，避免打字途中光标跳到末尾
             saveSettingsDebounced();
             stSaveSettings();
         });
     }
-    bindTagField('#sp-mem-keeptags',  'keepTags');
-    bindTagField('#sp-mem-extratags', 'extraTags');
+    bindTagField('#sp-mem-keeptags',  'keepTags',  'extraTags');
+    bindTagField('#sp-mem-extratags', 'extraTags', 'keepTags');
     $in('#sp-custom-prompt').on('input', function () {
         getSettings().customPrompt = this.value;
         saveSettingsDebounced();
