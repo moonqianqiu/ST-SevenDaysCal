@@ -9,7 +9,7 @@
 ## 1. 同步与版本惯例
 
 1. **版本号命名规范 (`manifest.json`)**：
-   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.10moon`**）；
+   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.11moon`**）；
    - 每次合并上游必然在 `manifest.json` 的 `version` 行发生冲突，直接按此惯例解决为 `X.Y.Zmoon`。
 2. **分支与合并安全策略**：
    - 合并上游前先建立备份分支：`git branch backup/master-before-upstream-vX.Y.Z master`；
@@ -24,7 +24,7 @@
 
 | 文件路径 | 冲突性质 | 解决裁决方式与保护要点 |
 | :--- | :--- | :--- |
-| `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.10moon`） |
+| `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.11moon`） |
 | `memory.js` | 状态声明区与 `jobSignal` 注释冲突 | **必须严格保留本地资产**：<br>1. 保留 `const _jobSignalDisposes = new WeakMap();`<br>2. 保留 `disposeJobSignal` 生命周期双向清理协议说明<br>3. 维持 `stripTags` re-export 状态，严禁退回上游旧正则<br>4. 吸收上游新特性（隐藏 AI 楼纳入、确认式落盘 `persistConfirmed`、完整性分类统计） |
 
 > **隐藏规则（易误判，合并时留意）——双中括号 `[[...]]`**：
@@ -103,9 +103,10 @@
 ## 6. 当前仓库状态底数（基线备忘）
 
 - **当前分支**：`master`
-- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.10`，提交 `fced105`）；
-- **当前版本**：`manifest.json` 版本号 **`3.7.10moon`**；
+- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.11`，提交 `2995942`）；
+- **当前版本**：`manifest.json` 版本号 **`3.7.11moon`**；
 - **最近提交历史**：
+  - `7ea9c4d`：`merge: integrate upstream v3.7.11`（面内讨论读取所选记忆源、收藏按钮与编辑按钮同栏直显）；
   - `2ad69f1`：`merge: integrate upstream v3.7.10`（坐标入口多选配置与自定义历法分槽防崩）；
   - `88f45b4`：`merge: integrate upstream v3.7.9`（隐藏 AI 楼纳入长期记忆、确认式落盘与中断保护、剧情倾向）；
   - `bc06be1`：清洗器三项强化与泄漏修复（三分支正则、40 例金样、同名 UI 校验）；
