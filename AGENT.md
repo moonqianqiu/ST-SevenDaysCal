@@ -1,15 +1,16 @@
-# 构画 · Moon 定制版 — 项目记忆（供维护与 CLI 参考）
+# 构画 · Moon 定制版 — Agent 项目指南
 
 本仓库是 [`atonal519/ST-SevenDaysCal`](https://github.com/atonal519/ST-SevenDaysCal) 的 fork（作者 moon 定制版），在 `master` 分支上跟踪上游最新基线，并叠加了“moon”专属改动。`origin = moonqianqiu/ST-SevenDaysCal`，`upstream = atonal519/ST-SevenDaysCal`。
 
 > **用途**：供后续会话/开发者在执行“合并上游”、“冲突裁决”、“代码维护”时，迅速掌握本 fork 的核心定制、版本惯例、冲突裁决规则以及架构设计决策，确保合并上游时不丢弃本地核心资产。
+> **更名说明**：本文件原名 `memory.md`，自 `3.7.12moon` 起更名为 `AGENT.md`，内容定位不变。
 
 ---
 
 ## 1. 同步与版本惯例
 
 1. **版本号命名规范 (`manifest.json`)**：
-   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.11moon`**）；
+   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.12moon`**）；
    - 每次合并上游必然在 `manifest.json` 的 `version` 行发生冲突，直接按此惯例解决为 `X.Y.Zmoon`。
 2. **分支与合并安全策略**：
    - 合并上游前先建立备份分支：`git branch backup/master-before-upstream-vX.Y.Z master`；
@@ -20,15 +21,15 @@
 
 ## 2. 合并冲突热区与标准裁决表（合并上游必查）
 
-每次合并上游发布版本时，通常仅在以下 2 个文件产生物理冲突，其余 30+ 业务文件绝大部分均由 Git 3-way 算法自动平滑合并：
+每次合并上游发布版本时，`manifest.json` 必然物理冲突；`memory.js` 是否物理冲突取决于上游是否触碰状态声明区 / `jobSignal` / 清洗器区域（v3.7.12 合并时即为自动合并成功、人工逐段复核通过），其余 30+ 业务文件绝大部分由 Git 3-way 算法自动平滑合并：
 
 | 文件路径 | 冲突性质 | 解决裁决方式与保护要点 |
 | :--- | :--- | :--- |
-| `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.11moon`） |
-| `memory.js` | 状态声明区与 `jobSignal` 注释冲突 | **必须严格保留本地资产**：<br>1. 保留 `const _jobSignalDisposes = new WeakMap();`<br>2. 保留 `disposeJobSignal` 生命周期双向清理协议说明<br>3. 维持 `stripTags` re-export 状态，严禁退回上游旧正则<br>4. 吸收上游新特性（隐藏 AI 楼纳入、确认式落盘 `persistConfirmed`、完整性分类统计） |
+| `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.12moon`） |
+| `memory.js` | 状态声明区 / `jobSignal` / 清洗器区域冲突 | **必须严格保留本地资产**：<br>1. 保留 `const _jobSignalDisposes = new WeakMap();` 与 `disposeJobSignal` 生命周期双向清理协议<br>2. 维持 `stripTags` 由 `runtime/tag-sanitizer.js` import + re-export 的状态，严禁退回上游内联旧正则<br>3. 吸收上游新特性并逐段复核（v3.7.12：`sourcePolicy` 来源核验、`validL0`/`validL1Entries`、`ledgerHistoricalNarrativeMessage` 楼层判定、`shortGroups` 短楼组、确认式落盘 `persistConfirmed`、完整性分类统计） |
 
 > **隐藏规则（易误判，合并时留意）——双中括号 `[[...]]`**：
-> `LITERAL_DOUBLE_BRACKET_RULE = '[[...]]'` 定义于 `utils/tag-names.js`（上游文件）。它**不属于普通标签名正则**（`[` 非字母），但在清洗器中承担真实语义——用户填 `[[...]]` 即对双中括号包裹块做清洗（keep 剥壳取内、extra 连内容删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**，保持与上游一致即可。
+> `LITERAL_DOUBLE_BRACKET_RULE = '[[...]]'` 定义于 `utils/tag-names.js`（上游文件），现由 `runtime/tag-sanitizer.js` 消费（`memory.js` 已不再直接 import）。它**不属于普通标签名正则**（`[` 非字母），但在清洗器中承担真实语义——用户填 `[[...]]` 即对双中括号包裹块做清洗（keep 剥壳取内、extra 连内容删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**，保持与上游一致即可。
 
 ---
 
@@ -56,8 +57,9 @@
   上游虽然在绑定 relay 监听器时添加了 `{ once: true }`，但该参数仅在真正触发 abort 时生效；在 99% 正常成功完成的请求中，`abort` 事件永不触发，导致未触发的监听器永久残留在长生命周期的 `_jobAbortController.signal` 上，随着批量重构或长时对话产生严重的闭包累积与内存泄漏。
 - **本地治本实现**：
   - 维护 `const _jobSignalDisposes = new WeakMap();` 记录双向清理函数；
-  - 导出 `export function disposeJobSignal(signal)`；
-  - 在 `runL0` 与 `runL1` 的 `fetchGroupSummary` / `fetchChapterSummary` 外部包裹 `try ... finally { disposeJobSignal(signal); }`，实现无论成功还是失败，零监听器残留。必须誓死保住。
+  - 定义 `disposeJobSignal(signal)`；
+  - 在 `runL0` 与 `runL1` 的 `_callApi(...)` 请求外包裹 `try ... finally { disposeJobSignal(signal); }`，实现无论成功还是失败，零监听器残留。必须誓死保住。
+- **v3.7.12 合并注意**：上游重写了 `runL1`（签名从 `range` 改为 `groupKeys`，新增 `sourcesStillCurrent` 守卫）并扩展了 `runL0`，合并后 finally 清理已重新落在新的请求路径上并复核通过；后续合并若上游再动这两个函数，必须重新套用本修复。
 
 ### 3.3 标签清洗设置项与 UI 保存校验
 - **默认值保护 (`runtime/settings.js`)**：
@@ -89,7 +91,7 @@
    *标准*：匹配数为 0。
 2. **本地资产文件清单校验**：
    合并结果相对 `upstream/master` 应只差以下 **10 个本地产权文件**（`git diff --stat upstream/master`）：
-   `.gitignore`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.md`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`。
+   `AGENT.md`、`.gitignore`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`。
 3. **全量自动化测试回归套件**：
    ```bash
    node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/lines/lines.test.js business/point/point.test.js business/memory/qianqianjie.test.js
@@ -103,11 +105,12 @@
 ## 6. 当前仓库状态底数（基线备忘）
 
 - **当前分支**：`master`
-- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.11`，提交 `2995942`）；
-- **当前版本**：`manifest.json` 版本号 **`3.7.11moon`**；
+- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.12`，提交 `93b571e`）；
+- **当前版本**：`manifest.json` 版本号 **`3.7.12moon`**；
 - **最近提交历史**：
+  - `7021114`：`merge: integrate upstream v3.7.12`（记忆来源核验 sourcePolicy/validL1Entries、千千结空记忆确认后改读最近 6 楼、故事时间戳完整年份要求、完整性检查反馈改按钮下方显示）；
+  - `59676a9`：`docx: update memory`（本文档上一轮维护）；
   - `7ea9c4d`：`merge: integrate upstream v3.7.11`（面内讨论读取所选记忆源、收藏按钮与编辑按钮同栏直显）；
   - `2ad69f1`：`merge: integrate upstream v3.7.10`（坐标入口多选配置与自定义历法分槽防崩）；
-  - `88f45b4`：`merge: integrate upstream v3.7.9`（隐藏 AI 楼纳入长期记忆、确认式落盘与中断保护、剧情倾向）；
-  - `bc06be1`：清洗器三项强化与泄漏修复（三分支正则、40 例金样、同名 UI 校验）；
+- **v3.7.12 合并验证记录**：全量测试 148/148 全绿；`node --check` 六个合并涉及 JS 文件通过；合并结果相对上游仅剩第 3 节所列本地定制（双向 diff 逐段复核）。
 - **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.4.3，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持 100% 逐字节一致。
