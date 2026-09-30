@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createQianQianJieMemoryAccess, QIANQIANJIE_BRIDGE_KEY } from './qianqianjie.js';
 
+// 上游 v3.7.13 更改千千结语义（仅 recall 作材料、前情单独存在不作材料、读取失败消息带
+// 「千千结记忆读取失败：」前缀）但未同步更新本测试；下方 4 例由本地按新语义适配，
+// 后续合并上游若再触碰这些用例，须先核对 qianqianjie.js 当前语义，勿盲目任取一侧。
+
 function promptSnapshot(overrides = {}) {
     return {
         status: 'ready',
@@ -45,7 +49,7 @@ test('qianqianjie reads the prepared prompt without requiring legacy interfaces 
     assert.equal(fixture.access.status().status, 'ready');
     const result = await fixture.access.result();
     assert.equal(result.status, 'ready');
-    assert.equal(result.text, '前情第一行\n第二行\n\n召回材料');
+    assert.equal(result.text, '召回材料');
     assert.equal(result.reader, fixture.api);
     assert.equal(fixture.access.reader(), fixture.api);
     assert.equal(fixture.calls.prompt, 1);
@@ -59,23 +63,23 @@ test('qianqianjie never reads full text, profiles, CSE history, or full-memory m
         Object.defineProperty(snapshot, key, { get() { touched.push(key); throw new Error(`forbidden snapshot field: ${key}`); } });
     }
     const fixture = addLegacyReaders(harness({ snapshot }));
-    assert.equal(await fixture.access.text({ full: true }), '前情材料\n\n召回材料');
+    assert.equal(await fixture.access.text({ full: true }), '召回材料');
     assert.deepEqual(touched, []);
     assert.equal(fixture.calls.prompt, 1);
     assertNoLegacyReads(fixture);
 });
 
-test('qianqianjie accepts either prepared section independently without adding an empty separator', async () => {
-    for (const [prequel, recall, expected] of [
-        [{ text: ' 前情 ' }, undefined, '前情'],
-        [undefined, { text: ' 召回 ' }, '召回'],
-        [{ text: '\t ' }, { text: '召回' }, '召回'],
-        [{ text: '前情' }, { text: '\n ' }, '前情'],
+test('qianqianjie uses only the recall section and treats prequel-only snapshots as empty', async () => {
+    for (const [prequel, recall, expectedStatus, expectedText] of [
+        [{ text: ' 前情 ' }, undefined, 'empty', ''],
+        [undefined, { text: ' 召回 ' }, 'ready', '召回'],
+        [{ text: '\t ' }, { text: '召回' }, 'ready', '召回'],
+        [{ text: '前情' }, { text: '\n ' }, 'empty', ''],
     ]) {
         const fixture = addLegacyReaders(harness({ snapshot: promptSnapshot({ prequel, recall }) }));
         const result = await fixture.access.result();
-        assert.equal(result.status, 'ready');
-        assert.equal(result.text, expected);
+        assert.equal(result.status, expectedStatus);
+        assert.equal(result.text, expectedText);
         assertNoLegacyReads(fixture);
     }
 });
@@ -191,7 +195,7 @@ test('qianqianjie reports synchronous and asynchronous prompt failures without f
         const result = await fixture.access.result();
         assert.equal(result.status, 'read-failed');
         assert.equal(result.text, '');
-        assert.equal(result.message, 'prompt-read-failed');
+        assert.equal(result.message, '千千结记忆读取失败：prompt-read-failed');
         assertNoLegacyReads(fixture);
     }
 });
