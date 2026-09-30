@@ -3,13 +3,14 @@
 //    memory.js @ merge dde98d9）生成 29 例锁定行为不变；2026-09 引号感知/extra 恒优先/
 //    自闭合 extra 修复新增 11 例（29→40），旧 29 例一字未动。
 // 2) 语义探针：四模式合同的关键行为显式断言（dropUnclosed 噪音围堵、keep 顺序无关、
-//    keep 内部逐字保留、extra 穿透、双中括号规则、引号属性、extra 恒优先）。
+//    keep 内部逐字保留、extra 穿透、双中括号规则、引号属性、extra 恒优先、通用字面量包裹规则）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { stripTags } from './runtime/tag-sanitizer.js';
+import { normalizeTagRules } from './utils/tag-names.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -108,4 +109,38 @@ test('same-name keep/extra: extra wins, other keeps unaffected', () => {
     assert.equal(stripTags('前<content>秘密</content>后', { keepTags: 'content', extraTags: 'content' }), '');
     // 部分遮蔽：content 被 extra 遮蔽，data 不受影响
     assert.equal(stripTags('<data>d</data><content>c</content>', { keepTags: 'content,data', extraTags: 'think,content' }), 'd');
+});
+
+// 通用字面量包裹规则（`起始...结束`，2026-09 自 ST-MyriadKnots P5 同步）：两栏都可配置，
+// keep 栏剥壳取内、extra 栏连定界符整块删；`[[...]]` 只是该规则的一个特例，与既有双中括号用例共用同一套树机。
+test('general wrapper rules: any `start...end` kept verbatim, invalid forms dropped', () => {
+    // 非双中括号的包裹规则不再被静默丢弃
+    assert.deepEqual(normalizeTagRules('{{...}},think,<<...>>'), ['{{...}}', 'think', '<<...>>']);
+    // 三类非法形态：开定界符为空 / 闭定界符为空 / 分隔符出现两次（歧义）
+    assert.deepEqual(normalizeTagRules('...abc,abc...,a...b...c'), []);
+    // 既有合同不回归：标签名仍小写归一，包裹规则大小写敏感原样保留
+    assert.deepEqual(normalizeTagRules('THINK, [[...]], {{...}} '), ['think', '[[...]]', '{{...}}']);
+});
+
+test('wrapper rule in extra column: removed wholesale, unclosed left verbatim', () => {
+    // 成对包裹连定界符删除
+    assert.equal(stripTags('正文{{噪音}}尾部', { keepTags: '', extraTags: '{{...}}' }), '正文尾部');
+    // 未闭合包裹不成 token → 按原文保留（不吞至 EOF）
+    assert.equal(stripTags('正文{{噪音', { keepTags: '', extraTags: '{{...}}' }), '正文{{噪音');
+    // 多条包裹规则并存
+    assert.equal(stripTags('A{{1}}B<<2>>C', { keepTags: '', extraTags: '{{...}},<<...>>' }), 'ABC');
+});
+
+test('wrapper rule in keep column: peel shell, inner verbatim (same path as [[...]])', () => {
+    // 保留栏的通用包裹符生效：正文被成对符号包住时取其内部
+    assert.equal(stripTags('正文{{核心}}尾部', { keepTags: '{{...}}', extraTags: '' }), '核心');
+    // 与既有双中括号语义一致（金样 m2-bracket-keep 的同类形态）
+    assert.equal(stripTags('x <<a b>> y', { keepTags: '<<...>>', extraTags: '' }), 'a b');
+});
+
+test('wrapper rule in M3: extra pierces keep subtree, always wins', () => {
+    // keep 块内的包裹噪音同样被剔除
+    assert.equal(stripTags('<content>正文{{噪音}}尾</content>', { keepTags: 'content', extraTags: '{{...}}' }), '正文尾');
+    // 外层 extra 包裹、内层 keep：整块剔除（与双中括号判例同构）
+    assert.equal(stripTags('{{<content>秘密</content>}}', { keepTags: 'content', extraTags: '{{...}}' }), '');
 });

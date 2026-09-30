@@ -5,14 +5,17 @@
 //                其余配对块原样、裸文本保留；
 //   M2 仅 keep：keep 配对块剥壳、内部逐字保留（不再二次清洗；嵌套 keep 继续剥壳），
 //               keep 块之外的一切丢弃，多个 keep 块以空行连接；
-//   M3 混合：M2 基础上 extra 恒优先——extra 块（含双中括号）无论处于根层、包裹 keep 块还是
+//   M3 混合：M2 基础上 extra 恒优先——extra 块（含字面量包裹块）无论处于根层、包裹 keep 块还是
 //            嵌在 keep 子树内，一律连内容删；keep 与 extra 配置了同名标签时同样按 extra 优先
 //            （设置面板保存时会拒绝此类配置，此处是历史脏数据的兜底语义）。
+// 字面量包裹规则：两栏都接受任意 `起始...结束` 形式（如 `[[...]]`、`{{...}}`），
+//   在 keep 栏 = 剥壳取内层，在 extra 栏 = 连同定界符整块删除（`[[...]]` 只是其特例）。
+//   2026-09-30 自兄弟仓库 ST-MyriadKnots 的 P5 改动同步，四模式函数体与其逐字一致。
 // 实现：吸收上游 v3.7.6 的单遍 token 树（parseSanitizerTree 思路），
 //   节点额外记录 openRaw/closeRaw 以支持 M0/M1 的逐字节复现；渲染层完全按上表合同重写。
 //   token 正则引号感知（属性值内允许 `>`），未闭合引号由宽松兜底分支接管（与旧正则一致，
 //   噪音不泄漏）；keep 子树内自闭合标记：extra 删、其余原样保留。
-import { LITERAL_DOUBLE_BRACKET_RULE, normalizeTagRules, TAG_NAME_SOURCE } from '../utils/tag-names.js';
+import { literalWrapperRule, normalizeTagRules, TAG_NAME_SOURCE } from '../utils/tag-names.js';
 
 const OPEN_NAME_RX = new RegExp(`^<\\/?(?:(${TAG_NAME_SOURCE}))`, 'u');
 const SELF_CLOSING_RX = /\/\s*>$/u;
@@ -25,32 +28,48 @@ const COMMENT_RX = /<!--[\s\S]*?-->/g;
 const TAG_ATTR_SOURCE = String.raw`(?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*`;
 const TAG_ATTR_FALLBACK_SOURCE = String.raw`(?:\s[^>]*)?`;
 
-function freshTokenRx() {
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// token 正则：标签双分支 + 每条字面量包裹规则一组 `(开)([\s\S]*?)(闭)`。
+// 包裹规则的捕获组自 1 起按传入顺序编号，供解析器反查命中哪条规则；
+// 标签两分支内部均为非捕获组，不会偏移组号。
+function freshTokenRx(wrapperRules = []) {
+    const wrapperPart = wrapperRules
+        .map(rule => `|${escapeRegExp(rule.start)}([\\s\\S]*?)${escapeRegExp(rule.end)}`)
+        .join('');
     return new RegExp(
         `<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_SOURCE}\\s*\\/?>`
         + `|<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_FALLBACK_SOURCE}\\/?>`
-        + `|\\[\\[([\\s\\S]*?)\\]\\]`, 'gu');
+        + wrapperPart, 'gu');
 }
 
-// 单遍解析：标签 token / 双中括号 token 建树；文本段原样入 children。
-// 节点：{ kind:'xml'|'bracket', name, normalized, closed, selfClosing, openRaw, closeRaw, children }
+// 单遍解析：标签 token / 字面量包裹 token 建树；文本段原样入 children。
+// 节点：{ kind:'xml'|'wrapper', name, normalized, closed, selfClosing, openRaw, closeRaw, children }
+// 包裹节点：openRaw/closeRaw 即配置里的开/闭定界符，children 为剥壳后的树（故嵌套包裹可整块处理）。
 // 约定：未闭合的闭合标记，若处于某个开标记子树内（stack>1）按文本保留（M0 逐字节复现），
 //       根层孤立闭合标记直接吞掉（与本地 orphan strip 一致）。
-function parseSanitizerTree(text) {
+function parseSanitizerTree(text, wrapperRules = []) {
     const root = { kind: 'root', name: '', normalized: '', closed: true, selfClosing: false, openRaw: '', closeRaw: '', children: [] };
     const stack = [root];
-    const tokenRx = freshTokenRx();
+    const tokenRx = freshTokenRx(wrapperRules);
     let cursor = 0;
     let match;
     while ((match = tokenRx.exec(text))) {
         const parent = stack[stack.length - 1];
         if (match.index > cursor) parent.children.push(text.slice(cursor, match.index));
         const token = match[0];
-        if (token.startsWith('[[')) {
+        let hitRule = -1;
+        for (let i = 0; i < wrapperRules.length; i++) {
+            if (match[i + 1] !== undefined) { hitRule = i; break; }
+        }
+        if (hitRule >= 0) {
+            const rule = wrapperRules[hitRule];
             parent.children.push({
-                kind: 'bracket', name: LITERAL_DOUBLE_BRACKET_RULE, normalized: LITERAL_DOUBLE_BRACKET_RULE,
-                closed: true, selfClosing: false, openRaw: token, closeRaw: '',
-                children: parseSanitizerTree(match[1]).children,
+                kind: 'wrapper', name: rule.raw, normalized: rule.raw,
+                closed: true, selfClosing: false, openRaw: rule.start, closeRaw: rule.end,
+                children: parseSanitizerTree(match[hitRule + 1], wrapperRules).children,
             });
         } else if (token.startsWith('</')) {
             const norm = (OPEN_NAME_RX.exec(token)?.[1] || '').toLowerCase();
@@ -89,6 +108,19 @@ function toRuleSet(list) {
     return set;
 }
 
+// 从 keep/extra 两栏收集字面量包裹规则（去重后按开定界符长度降序，防止短前缀抢走长定界符的匹配）。
+function collectWrapperRules(keep, extra) {
+    const rules = [];
+    const seen = new Set();
+    for (const item of [...keep, ...extra]) {
+        const parsed = literalWrapperRule(item);
+        if (!parsed || seen.has(item)) continue;
+        seen.add(item);
+        rules.push(Object.freeze({ ...parsed, raw: item }));
+    }
+    return rules.sort((a, b) => b.start.length - a.start.length);
+}
+
 // dropUnclosed（未闭合 extra 的本地语义）：子树内若存在同名闭合（取最后一个），
 // 吞掉从头到该闭合为止的一切、仅保留其后残段；否则整块吞掉（吞至 EOF，噪音不泄漏）。
 function residueAfterLastSameNameClose(node, render) {
@@ -106,9 +138,9 @@ function renderFlat(children, extraSet) {
     let out = '';
     for (const child of children) {
         if (typeof child === 'string') { out += child; continue; }
-        if (child.kind === 'bracket') {
+        if (child.kind === 'wrapper') {
             if (extraSet.has(child.name)) continue;
-            out += `[[${renderFlat(child.children, extraSet)}]]`;
+            out += child.openRaw + renderFlat(child.children, extraSet) + child.closeRaw;
             continue;
         }
         if (child.selfClosing) continue;
@@ -131,10 +163,10 @@ function renderKeptInner(children, keepSet, extraSet) {
     let out = '';
     for (const child of children) {
         if (typeof child === 'string') { out += child; continue; }
-        if (child.kind === 'bracket') {
+        if (child.kind === 'wrapper') {
             if (extraSet.has(child.name)) continue;
             if (keepSet.has(child.normalized)) { out += renderKeptInner(child.children, keepSet, extraSet); continue; }
-            out += `[[${renderKeptInner(child.children, keepSet, extraSet)}]]`;
+            out += child.openRaw + renderKeptInner(child.children, keepSet, extraSet) + child.closeRaw;
             continue;
         }
         if (child.selfClosing) {
@@ -154,7 +186,7 @@ function renderKeptInner(children, keepSet, extraSet) {
     return out;
 }
 
-// M2/M3 根收集：只输出 keep 配对块的内部内容（裸文本丢弃）；extra 块（闭合/未闭合/双中括号）
+// M2/M3 根收集：只输出 keep 配对块的内部内容（裸文本丢弃）；extra 块（闭合/未闭合/字面量包裹）
 // 一律整块跳过不下探——extra 恒优先，被 extra 包裹的 keep 块视同噪音删除；其余非 keep 块下探搜寻。
 function collectKept(children, keepSet, extraSet, out) {
     for (const child of children) {
@@ -172,8 +204,9 @@ export function stripTags(raw, opts = {}) {
     const extra = normalizeTagRules(opts.extraTags ?? '');
     const keepSet = toRuleSet(keep);
     const extraSet = toRuleSet(extra);
+    const wrapperRules = collectWrapperRules(keep, extra);
     const s = String(raw).replace(COMMENT_RX, '');
-    const root = parseSanitizerTree(s);
+    const root = parseSanitizerTree(s, wrapperRules);
     let out;
     if (keep.length) {
         const parts = [];

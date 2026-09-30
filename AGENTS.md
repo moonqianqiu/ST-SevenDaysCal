@@ -27,9 +27,10 @@
 | :--- | :--- | :--- |
 | `manifest.json` | `version` 版本行冲突 | 直接采纳为最新 `X.Y.Zmoon`（如 `3.7.13moon`） |
 | `memory.js` | 状态声明区 / `jobSignal` / 清洗器区域冲突 | **必须严格保留本地资产**：<br>1. 保留 `const _jobSignalDisposes = new WeakMap();` 与 `disposeJobSignal` 生命周期双向清理协议<br>2. 维持 `stripTags` 由 `runtime/tag-sanitizer.js` import + re-export 的状态，严禁退回上游内联旧正则<br>3. 吸收上游新特性并逐段复核（v3.7.12：`sourcePolicy` 来源核验、`validL0`/`validL1Entries`、`ledgerHistoricalNarrativeMessage` 楼层判定、`shortGroups` 短楼组、确认式落盘 `persistConfirmed`、完整性分类统计） |
+| `utils/tag-names.js` | 上游若改动 `normalizeTagRules` 或新增规则形态 | **本地泛化保留**（2026-09-30 起为本地产权文件）：`literalWrapperRule` 三条件与 `normalizeTagRules` 对包裹规则「原样保留、大小写敏感」的语义（自 ST-MyriadKnots P5 同步）须逐字保留；仅吸收上游对标签名字符合同的改动 |
 
-> **隐藏规则（易误判，合并时留意）——双中括号 `[[...]]`**：
-> `LITERAL_DOUBLE_BRACKET_RULE = '[[...]]'` 定义于 `utils/tag-names.js`（上游文件），现由 `runtime/tag-sanitizer.js` 消费（`memory.js` 已不再直接 import）。它**不属于普通标签名正则**（`[` 非字母），但在清洗器中承担真实语义——用户填 `[[...]]` 即对双中括号包裹块做清洗（keep 剥壳取内、extra 连内容删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**，保持与上游一致即可。
+> **隐藏规则（易误判，合并时留意）——字面量包裹规则 `起始...结束`**：
+> `LITERAL_WRAPPER_SEPARATOR = '...'` 与 `literalWrapperRule()` 定义于 `utils/tag-names.js`（2026-09-30 起为本地增强文件），由 `runtime/tag-sanitizer.js` 消费（`memory.js` 已不再直接 import）。它**不属于普通标签名正则**（`[` 等非字母），但在清洗器中承担真实语义——用户填任意「起始...结束」（如 `[[...]]`、`{{...}}`）即对该包裹块做清洗（keep 剥壳取内、extra 连定界符整块删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**。
 
 ---
 
@@ -46,7 +47,7 @@
   - **M1（仅 extra）**：成对删除 extra 标签及内容；未闭合 extra 吞至最后同名闭合或 EOF（噪音不泄漏）；
   - **M2（仅 keep）**：剥壳保留 keep 块内容（内部不再二次清洗，嵌套子标签原样保留），块外裸文本丢弃；
   - **M3（混合）**：extra 恒优先，无论在外层、包裹 keep 还是嵌在 keep 子树内一律整块剔除；同名 keep/extra 按 extra 优先；
-  - **三分支 token 正则**：`TAG_ATTR_SOURCE`（属性引号感知，值内 `>` 不截断）+ `TAG_ATTR_FALLBACK_SOURCE`（未闭合引号宽松兜底，等价旧正则截断行为，防止思维链泄漏）+ `[[...]]`；
+  - **三分支 token 正则**：`TAG_ATTR_SOURCE`（属性引号感知，值内 `>` 不截断）+ `TAG_ATTR_FALLBACK_SOURCE`（未闭合引号宽松兜底，等价旧正则截断行为，防止思维链泄漏）+ 每条配置的字面量包裹规则各一分支（`freshTokenRx(wrapperRules)` 动态生成，`[[...]]` 只是特例）；
   - **自闭合标记**：keep 子树内自闭合 extra 标记连标记删除，非 extra 保留 `openRaw`。
 - **金样锁定**：
   - 行为由 `runtime/tag-sanitizer.golden.json`（40 组金样）绝对锁定；
@@ -66,10 +67,10 @@
   - `keepTags` 默认值必须为 `''`（两栏皆空 = 不清洗，全库严禁残留 `keepTags: 'content'` 默认）。
 - **设置面板与保存拦截器 (`index.js`)**：
   - 设置面板文案必须包含关键指导字符串：`两栏都留空＝不清洗`、`只配此栏即只留各 keep 块的内部内容`、`可穿透进 keep 块内部`；
-  - `bindTagField` 保存校验：用户在保留/剔除两栏配置同名标签时，失焦自动求归一化交集（含 `[[...]]`），命中时**拒绝落存、输入框回退旧值**，并弹出 `showToast(..., true)` 错误提示，从源头杜绝非法配置存盘。
+  - `bindTagField` 保存校验：用户在保留/剔除两栏配置同名标签时，失焦自动求归一化交集（标签名与字面量包裹规则一并参与，含 `[[...]]`、`{{...}}`），命中时**拒绝落存、输入框回退旧值**，并弹出 `showToast(..., true)` 错误提示，从源头杜绝非法配置存盘。
 
 ### 3.4 本地专属单元测试文件
-- `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针；
+- `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针（含通用包裹规则 4 例，自 ST-MyriadKnots P5 同步）；
 - `business/space/context.test.js`：空间意图识别与结构化卡片单测（上游没有）；
 - `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**，自 v3.7.13 起）：上游 v3.7.13 更改千千结语义（仅 recall 作材料、前情单独存在不作材料、读取失败消息加「千千结记忆读取失败：」前缀）但**未同步更新自己的测试**（纯上游 worktree 实测 4/12 失败），本地按新语义适配了 4 例断言并恢复全绿。后续合并若上游触碰此测试文件：先核对 `qianqianjie.js` 当前语义再裁决，勿盲目任取一侧；若上游日后自己补齐了测试更新，应以适配面最小的一方为准并删除本地适配注释。
 
@@ -91,13 +92,13 @@
    ```
    *标准*：匹配数为 0。
 2. **本地资产文件清单校验**：
-   合并结果相对 `upstream/master` 应只差以下 **11 个本地产权文件**（`git diff --stat upstream/master`）：
-   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`。
+   合并结果相对 `upstream/master` 应只差以下 **12 个本地产权文件**（`git diff --stat upstream/master`）：
+   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`。
 3. **全量自动化测试回归套件**：
    ```bash
    node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/lines/lines.test.js business/point/point.test.js business/memory/qianqianjie.test.js
    ```
-   *标准*：**148/148 全部全绿（通过率 100%，0 失败）**。
+   *标准*：**152/152 全部全绿（通过率 100%，0 失败）**。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：
    运行 40 例金样跨仓比对脚本，验证与 `ST-MyriadKnots/src/memory-content-sanitizer.js` 输出 **0 差异、100% 逐字节一致**。
 
@@ -115,4 +116,4 @@
   - `b7d3bd8`：`docs: rename memory.md to AGENT.md and record v3.7.12 merge`；
   - `7021114`：`merge: integrate upstream v3.7.12`（记忆来源核验 sourcePolicy/validL1Entries、千千结空记忆确认后改读最近 6 楼、故事时间戳完整年份要求、完整性检查反馈改按钮下方显示）；
 - **v3.7.13 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.13moon`）；本地 4 块 index.js 资产与 `_jobSignalDisposes` 闭环逐项断言在位；`business/space/context.js` 与上游逐字节一致；`node --check` 13 个合并涉及 JS 文件通过；千千结测试适配后全量 148/148 全绿；跨仓金样对拍 40/40 例 0 差异。**特别记录：上游 v3.7.13 发布时自带 4 个红测试（千千结套件），归因经纯上游 worktree 复跑坐实，非合并损坏。**
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.4.3，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.1，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓后，40 例金样 + 新增包裹规则用例跨仓对拍仍 0 差异。

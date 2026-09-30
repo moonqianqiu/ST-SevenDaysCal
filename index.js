@@ -3381,11 +3381,11 @@ function injectModal() {
                                         <textarea id="sp-custom-prompt" class="sp-input sp-theater-cfg-textarea" placeholder="可留空（创作链只用内置强化词）。也可追加创作规范，如：去八股、控制文风、叙事口吻…"></textarea>
                                     </details>
                                     <details class="sp-settings-subsection sp-prompt-tags"><summary>标签清洗</summary>
-                                        <p class="sp-cfg-hint">读取 AI 楼层原文时的标签过滤规则，<strong>对全部生成链路生效</strong>（记忆摘要、点 / 线 / 面生成、间 / 面讨论的对话注入），用来剔除状态栏 / 思维链等包裹、避免污染上下文。两栏都留空＝<strong>不清洗</strong>（仅做轻量卫生：删注释、孤立标记、折空行）；配了任一栏才启用内容级过滤。多个用英文逗号分隔；XML 包裹可写标签名或带尖括号（<code>content</code> / <code>&lt;content&gt;</code> 等效），双中括号包裹请固定填写 <code>[[...]]</code>（三个点是配置占位）；支持中文、日文等 Unicode 标签名。</p>
+                                        <p class="sp-cfg-hint">读取 AI 楼层原文时的标签过滤规则，<strong>对全部生成链路生效</strong>（记忆摘要、点 / 线 / 面生成、间 / 面讨论的对话注入），用来剔除状态栏 / 思维链等包裹、避免污染上下文。两栏都留空＝<strong>不清洗</strong>（仅做轻量卫生：删注释、孤立标记、折空行）；配了任一栏才启用内容级过滤。多个用英文逗号分隔；XML 包裹可写标签名或带尖括号（<code>content</code> / <code>&lt;content&gt;</code> 等效），双中括号包裹请填写字面量包裹规则 <code>[[...]]</code>，也接受任意「起始...结束」形式（如 <code>{{...}}</code>、<code>&lt;&lt;...&gt;&gt;</code>，三个点是配置占位：前面为开定界符、后面为闭定界符）；支持中文、日文等 Unicode 标签名。</p>
                                         <div class="sp-mode-opt sp-tag-opt"><span>保留包裹符</span><input id="sp-mem-keeptags" class="sp-input sp-tag-input" type="text" placeholder="content" value=""></div>
                                         <p class="sp-cfg-hint">列表中标签的配对块<strong>剥掉标签标记、内部内容原样保留</strong>（内部不再二次清洗，如 <code>&lt;content&gt;</code> 里的 <code>&lt;data&gt;</code>/<code>&lt;plan&gt;</code> 会连标记保留）；<strong>keep 块之外的其余一切（其他标签块与标签外裸文本）全部剔除</strong>。只配此栏即只留各 keep 块的内部内容、清掉其余全部噪音。</p>
                                         <div class="sp-mode-opt sp-tag-opt"><span>剔除包裹符</span><input id="sp-mem-extratags" class="sp-input sp-tag-input" type="text" placeholder="think,reasoning" value=""></div>
-                                        <p class="sp-cfg-hint">标签<strong>连同内部内容一起删除</strong>（如思维链 <code>think</code> / <code>reasoning</code> / <code>[[...]]</code>），可穿透进 keep 块内部、恒优先于 keep；未闭合的双中括号会保留原文，不会吞掉后文。两栏不能填相同标签（保存时会被拦截）。</p>
+                                        <p class="sp-cfg-hint">标签<strong>连同内部内容一起删除</strong>（如思维链 <code>think</code> / <code>reasoning</code> / <code>[[...]]</code> / <code>{{...}}</code>），可穿透进 keep 块内部、恒优先于 keep；未闭合的包裹规则会保留原文，不会吞掉后文。两栏不能填相同标签（保存时会被拦截）。</p>
                                     </details>
                                     <details class="sp-settings-subsection sp-prompt-storyclock"><summary>时间戳提示词</summary>
                                         <p class="sp-cfg-hint" id="sp-storyclock-coordination">${storyClockStatusCopy(storyClockController.refresh())}</p>
@@ -8366,7 +8366,7 @@ function bindMemoryHandlers() {
         this.value = v;
         saveSettingsDebounced();
     });
-    // Tag sanitizer inputs — normalize Unicode tag names or the fixed [[...]] rule, then save.
+    // Tag sanitizer inputs — normalize Unicode tag names or any `start...end` literal wrapper rule, then save.
     // Applies to future reads; existing L0 summaries built with old rules keep
     // their hash and stay valid — new content read after change uses new rules.
     // input=即打即存（存 sanitize 值但不回写 value，免光标跳）；change=失焦时规范化回写显示。
