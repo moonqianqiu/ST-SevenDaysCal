@@ -10,7 +10,7 @@
 ## 1. 同步与版本惯例
 
 1. **版本号命名规范 (`manifest.json`)**：
-   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.13moon`**）；
+   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.14moon`**）；
    - 每次合并上游必然在 `manifest.json` 的 `version` 行发生冲突，直接按此惯例解决为 `X.Y.Zmoon`。
 2. **分支与合并安全策略**：
    - 合并上游前先建立备份分支：`git branch backup/master-before-upstream-vX.Y.Z master`；
@@ -107,13 +107,16 @@
 ## 6. 当前仓库状态底数（基线备忘）
 
 - **当前分支**：`master`
-- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.13`，提交 `9a2ae85`）；
-- **当前版本**：`manifest.json` 版本号 **`3.7.13moon`**；
+- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.14`，提交 `f7886a1`）；
+- **当前版本**：`manifest.json` 版本号 **`3.7.14moon`**；
 - **最近提交历史**：
+  - `31310a3`：`merge: integrate upstream v3.7.14`（间/面内讨论人物卡提名、移除构画自设 token 上限、面内讨论空摘要回退）；
+  - `e910c59`：`feat: 通用字面量包裹规则同步自 ST-MyriadKnots P5`（清洗器接受任意「起始...结束」字面量包裹规则，金样新增 4 例 → 152/152）；
   - `61cb0cb`：`test: adapt qianqianjie tests to upstream v3.7.13 semantics`（上游带红测试发布，本地按新语义适配千千结 4 例断言）；
   - `3145766`：`merge: integrate upstream v3.7.13`（历法时间戳名称 `title`、千千结召回缓存 v2「上次成功召回保留至新召回成功」、间/面世界书按当前问题触发、面板拖拽失焦即止）；
   - `dcc3402`：`rename`（`AGENT.md` → `AGENTS.md`）；
   - `b7d3bd8`：`docs: rename memory.md to AGENT.md and record v3.7.12 merge`；
   - `7021114`：`merge: integrate upstream v3.7.12`（记忆来源核验 sourcePolicy/validL1Entries、千千结空记忆确认后改读最近 6 楼、故事时间戳完整年份要求、完整性检查反馈改按钮下方显示）；
 - **v3.7.13 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.13moon`）；本地 4 块 index.js 资产与 `_jobSignalDisposes` 闭环逐项断言在位；`business/space/context.js` 与上游逐字节一致；`node --check` 13 个合并涉及 JS 文件通过；千千结测试适配后全量 148/148 全绿；跨仓金样对拍 40/40 例 0 差异。**特别记录：上游 v3.7.13 发布时自带 4 个红测试（千千结套件），归因经纯上游 worktree 复跑坐实，非合并损坏。**
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.1，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓后，40 例金样 + 新增包裹规则用例跨仓对拍仍 0 差异。
+- **v3.7.14 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.14moon`）；`index.js` 自动合并（本地改动在设置 UI/清洗器绑定区，与上游世界书/记忆函数区不相交）。上游变更：①间/面内讨论人物卡提名——`titleSupplementText`（本轮实际投喂材料）经新增 `worldInfoPersonTitleMatches` 按人物类标题提名主卡，`worldInfoTitleMatches` 人物分支放宽为正文出现人名即命中；②移除构画自设 token 上限——世界书注入 60000 裁剪循环、记忆 `_capMemText`/`MEMORY_TOKEN_BUDGET`、API 请求 `max_tokens: 30000` 全链路删除（`WORLD_INFO_TOKEN_BUDGET` 改名 `WORLD_INFO_SCAN_BUDGET` 仅作扫描预算）；③面内讨论 Anima/柏宝书空摘要时 `recentFallback` 改读最近 6 条可见 AI 楼层（`buildRecentChatContext(ctx, 6, Infinity)`），也无正文则报错停止。**语义收紧**：`worldInfoTitleSupplementAllows` 改为概率 ≠100 一律拒绝（标题补充不再掷骰，概率命中只由宿主 dry-run 决定；概率 100 的确定性条目被宿主预算挤掉时可经标题路径救回）。验证：`node --check` 10 个合并涉及 JS 文件 + `manifest.json` JSON 解析通过；合并前基线 152/152 全绿，合并后全量 152/152 全绿；清洗器资产域（`memory.js`/`runtime/`/`utils/`）合并前后零字节变化；跨仓金样对拍 40/40 例 0 差异。上游自带千千结红测试仍为同 4 例（v3.7.13 已知问题，上游未修，本地适配版不受影响）。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.1，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓后，40 例金样 + 新增包裹规则用例跨仓对拍仍 0 差异；v3.7.14 合并后复验金样 cases 数组仍 40/40 例 0 差异。
