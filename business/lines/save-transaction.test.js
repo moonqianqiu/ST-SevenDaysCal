@@ -8,7 +8,11 @@ import { createTaskOwnerManager } from '../../runtime/task-owner.js';
 import { createDeadlineSignal } from '../../runtime/deadline.js';
 import { drawTickets } from './vectors/draw.js';
 import { bindExternalChatStorage, getChatRoot, loadExternalChat, persistExternalRoots, registerExternalStorageContext, recordDiagnosticAttempt, storageStatus } from '../../runtime/external-chat-storage.js';
-import { compare, applyPatch } from '../../../../../util/fast-json-patch.js';
+// 上游 v3.7.15 此处以 '../../../../../util/fast-json-patch.js' 引用作者机器本地工作区文件，
+// 路径越出仓库根且上游仓库未携带该文件（纯上游检出即无法运行，红测试归因经 worktree 复跑坐实）。
+// 本地适配为仓库内 '../../util/fast-json-patch.js'（本地最小 RFC 6902 实现）；
+// 后续合并若上游自带 util/fast-json-patch.js，以上游版本为准并回收本地实现与本注释。
+import { compare, applyPatch } from '../../util/fast-json-patch.js';
 
 const path = '/sp-store/data/lines-user';
 const initial = () => ({ integrity: 'i1', 'sp-store': { version: 1, data: { 'lines-user': { raw: 'old', ts: 1, history: [] }, 'diagnostics-v1': { floors: [{ result: 'pending' }] }, 'outline-user': { raw: 'old outline' } } }, 'sp-ledger': { entries: ['old ledger'] }, variables: { old: true } });
