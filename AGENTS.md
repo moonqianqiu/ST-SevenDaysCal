@@ -10,7 +10,7 @@
 ## 1. 同步与版本惯例
 
 1. **版本号命名规范 (`manifest.json`)**：
-   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.15moon`**）；
+   - 格式强制规范：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.7.16moon`**）；
    - 每次合并上游必然在 `manifest.json` 的 `version` 行发生冲突，直接按此惯例解决为 `X.Y.Zmoon`。
 2. **分支与合并安全策略**：
    - 合并上游前先建立备份分支：`git branch backup/master-before-upstream-vX.Y.Z master`；
@@ -21,7 +21,7 @@
 
 ## 2. 合并冲突热区与标准裁决表（合并上游必查）
 
-每次合并上游发布版本时，`manifest.json` 必然物理冲突；`memory.js` 是否物理冲突取决于上游是否触碰状态声明区 / `jobSignal` / 清洗器区域（v3.7.12 合并时自动合并成功、人工逐段复核通过；v3.7.13 与 v3.7.15 上游未触碰 `memory.js`，原样保留；v3.7.14 同样未触碰），其余 30+ 业务文件绝大部分由 Git 3-way 算法自动平滑合并（v3.7.15 的 `index.js` 与 `qianqianjie.test.js` 亦自动合并，本地资产与适配断言全部幸存，逐项复核通过）：
+每次合并上游发布版本时，`manifest.json` 必然物理冲突；`memory.js` 是否物理冲突取决于上游是否触碰状态声明区 / `jobSignal` / 清洗器区域（v3.7.12 合并时自动合并成功、人工逐段复核通过；v3.7.13、v3.7.15 与 v3.7.16 上游未触碰 `memory.js`，原样保留；v3.7.14 同样未触碰），其余 30+ 业务文件绝大部分由 Git 3-way 算法自动平滑合并（v3.7.15 的 `index.js` 与 `qianqianjie.test.js` 亦自动合并，本地资产与适配断言全部幸存，逐项复核通过；v3.7.16 的 `index.js` 与 `save-transaction.test.js` 同样自动合并，上游新 import 与本地适配注释干净共存，逐项复核通过）：
 
 | 文件路径 | 冲突性质 | 解决裁决方式与保护要点 |
 | :--- | :--- | :--- |
@@ -75,6 +75,7 @@
 - `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**，自 v3.7.13 起）：上游 v3.7.13 更改千千结语义（仅 recall 作材料、前情单独存在不作材料、读取失败消息加「千千结记忆读取失败：」前缀）但**未同步更新自己的测试**（纯上游 worktree 实测 4/12 失败），本地按新语义适配了 4 例断言并恢复全绿。后续合并若上游触碰此测试文件：先核对 `qianqianjie.js` 当前语义再裁决，勿盲目任取一侧；若上游日后自己补齐了测试更新，应以适配面最小的一方为准并删除本地适配注释。
   - **v3.7.15 复核**：上游再次触碰此测试文件——harness 注入 `writeCache`/`readCache` 并新增 1 例缓存旁路测试（召回先返回、缓存持久化限时旁路确认）——但仍未修复同 4 例红断言（纯上游 worktree 实测 9/13）。合并裁决：吸收上游 harness 与新测试，保留本地 4 例适配断言，全绿。
 - `business/lines/save-transaction.test.js` + `util/fast-json-patch.js`（**上游测试的本地适配版 + 本地补齐依赖**，自 v3.7.15 起）：上游 v3.7.15 新增的保存事务测试以 `../../../../../util/fast-json-patch.js` 引用作者机器本地工作区文件，路径越出仓库根且上游仓库未携带该文件，纯上游检出即无法运行（worktree 复报 `ERR_MODULE_NOT_FOUND` 坐实）。本地补齐最小 RFC 6902 实现 `util/fast-json-patch.js`（`compare` + `applyPatch`），测试内引用适配为 `../../util/fast-json-patch.js`。后续合并若上游自带 `util/fast-json-patch.js`：**以上游版本为准**，回收本地实现、恢复上游引用路径并删除适配注释。
+  - **v3.7.16 复核**：上游扩充此测试（+124 行，新增 7 例 TT 保存器测试并 import 新模块 `diagnosticMessage`/`createTauriTavernMetadataSaver`），**仍引用作者机器路径且仍未自带该文件**（连续第二个版本带红引用发布）。合并裁决：3-way 自动合并已干净落地——吸收上游新 import 与新测试，保留本地适配注释与 `../../util/fast-json-patch.js` 引用，新 TT 测试不依赖 JSON Patch 新操作、现有 shim 足以支撑（208 全绿坐实）。
 
 ---
 
@@ -100,7 +101,7 @@
    ```bash
    node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/lines/lines.test.js business/lines/dashed-failure.test.js business/lines/save-transaction.test.js business/point/point.test.js business/memory/qianqianjie.test.js business/narrative-preferences.test.js business/outline/judge-failure.test.js business/ui/panel-failure.test.js
    ```
-   *标准*：**201/201 全部全绿（通过率 100%，0 失败）**（v3.7.15 起为 15 个测试文件口径；原 6 文件子集为 165/165）。
+   *标准*：**208/208 全部全绿（通过率 100%，0 失败）**（v3.7.16 起基线由 201 升至 208：上游 v3.7.16 新增 7 例 TT 保存器/票据分类测试；仍为 15 个测试文件口径；原 6 文件子集为 165/165）。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：
    运行 40 例金样跨仓比对脚本，验证与 `ST-MyriadKnots/src/memory-content-sanitizer.js` 输出 **0 差异、100% 逐字节一致**。
 
@@ -109,9 +110,10 @@
 ## 6. 当前仓库状态底数（基线备忘）
 
 - **当前分支**：`master`
-- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.15`，提交 `d31b6c0`）；
-- **当前版本**：`manifest.json` 版本号 **`3.7.15moon`**；
+- **跟踪上游基线**：已合入 `upstream/master`（Tag: `v3.7.16`，提交 `5218e59`）；
+- **当前版本**：`manifest.json` 版本号 **`3.7.16moon`**；
 - **最近提交历史**：
+  - `ed85bdc`：`merge: integrate upstream v3.7.16`（线保存兼容 TT metadata-only saver、Ticket 编号分类，见下方验证记录）；
   - `dc5efc0`：`test: vendor RFC6902 shim and fix save-transaction test import (upstream v3.7.15 red test)`（上游红测试本地适配，见 §3.4 与下方验证记录）；
   - `652fb95`：`merge: integrate upstream v3.7.15`（剧情创作偏好、操作失败提示、线生成与保存事务/期限）；
   - `4b194e6`：`docs: update AGENTS.md for v3.7.14moon merge`；
@@ -123,4 +125,5 @@
 - **v3.7.13 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.13moon`）；本地 4 块 index.js 资产与 `_jobSignalDisposes` 闭环逐项断言在位；`business/space/context.js` 与上游逐字节一致；`node --check` 13 个合并涉及 JS 文件通过；千千结测试适配后全量 148/148 全绿；跨仓金样对拍 40/40 例 0 差异。**特别记录：上游 v3.7.13 发布时自带 4 个红测试（千千结套件），归因经纯上游 worktree 复跑坐实，非合并损坏。**
 - **v3.7.14 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.14moon`）；`index.js` 自动合并（本地改动在设置 UI/清洗器绑定区，与上游世界书/记忆函数区不相交）。上游变更：①间/面内讨论人物卡提名——`titleSupplementText`（本轮实际投喂材料）经新增 `worldInfoPersonTitleMatches` 按人物类标题提名主卡，`worldInfoTitleMatches` 人物分支放宽为正文出现人名即命中；②移除构画自设 token 上限——世界书注入 60000 裁剪循环、记忆 `_capMemText`/`MEMORY_TOKEN_BUDGET`、API 请求 `max_tokens: 30000` 全链路删除（`WORLD_INFO_TOKEN_BUDGET` 改名 `WORLD_INFO_SCAN_BUDGET` 仅作扫描预算）；③面内讨论 Anima/柏宝书空摘要时 `recentFallback` 改读最近 6 条可见 AI 楼层（`buildRecentChatContext(ctx, 6, Infinity)`），也无正文则报错停止。**语义收紧**：`worldInfoTitleSupplementAllows` 改为概率 ≠100 一律拒绝（标题补充不再掷骰，概率命中只由宿主 dry-run 决定；概率 100 的确定性条目被宿主预算挤掉时可经标题路径救回）。验证：`node --check` 10 个合并涉及 JS 文件 + `manifest.json` JSON 解析通过；合并前基线 152/152 全绿，合并后全量 152/152 全绿；清洗器资产域（`memory.js`/`runtime/`/`utils/`）合并前后零字节变化；跨仓金样对拍 40/40 例 0 差异。上游自带千千结红测试仍为同 4 例（v3.7.13 已知问题，上游未修，本地适配版不受影响）。
 - **v3.7.15 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.15moon`）；`index.js` 与 `qianqianjie.test.js` 自动合并。51 文件 +2553/-269，上游变更三大主题：①**剧情创作偏好**——新增 `business/narrative-preferences.js`（`narrativePreferenceContract`），点/面/间创作入口参考剧情倾向与叙事尺度设置，`business/space/context.js` 载荷键 `lineDirection` 改为 `preferences`（本地 `context.test.js` 不引用该键，实测不受影响）；普通讨论与解释不受偏好强制引导；②**操作失败提示**——新增 `business/ui/panel-failure.js`（`createPanelFailureStore`/`createPanelFailureRecency`），点/线/轴/日期/刻度/面/间/棱/坐标/虚线面板在当前页面运行期、正文上方保留最近一次操作失败原因（普通关闭重开仍可查），悬浮入口工作期忙碌态，各 `feature.js` 以 `Object.create(chat)` 包装控制器注入失败记录；③**线生成与保存**——新增 `runtime/deadline.js`（`createDeadlineSignal`/`LINES_TIME_LIMITS`/`waitForSignal`：单次任务 4 分钟、准备 1 分钟、确认保存 30 秒，超时按失败处理不自动重发），后台推进不再阻塞正文聊天，当前界面不发布未确认新线；新增 `runtime/diagnostic-trace.js`（轻量安全诊断记录，外置存储模式不再逐条后台落盘）；`runtime/external-chat-storage.js` 大改（+221）：外置存储确认保存只在确认后更新当前数据，过期/排队旧写入不覆盖较新内容；`runtime/target-metadata-save.js` 大改（+174）：`captureMetadataIntentBefore`/`createTargetSnapshotRefresher` 意图基线与快照刷新。**红测试归因（两次复跑坐实，均非合并损坏）**：上游新增 `business/lines/save-transaction.test.js` 引用 `../../../../../util/fast-json-patch.js`（作者机器本地路径，越出仓库根、上游未携带），纯上游 worktree 复报 `ERR_MODULE_NOT_FOUND`；本地按千千结先例适配——补齐最小 RFC 6902 实现 `util/fast-json-patch.js` + 引用路径改为 `../../util/fast-json-patch.js`，21/21 全绿（**本地产权清单 12 → 14**）。上游千千结 4 例红测试依旧未修（纯上游 worktree 9/13），本地适配版不受影响。验证：`node --check` 48 个合并涉及 JS 文件通过；合并后全量 **201/201 全绿**（15 个测试文件，含上游新增 dashed-failure/save-transaction/narrative-preferences/judge-failure/panel-failure 五文件；原 6 文件子集 165/165）；清洗器资产域（`memory.js`/`runtime/tag-sanitizer.js`/`golden.json`/`runtime/settings.js`/`utils/tag-names.js`/`memory.sanitizer.test.js`）合并前后零字节变化；本地资产逐项在位（index.js 5 处：`keepTags: ''` 默认 ×2、加长提示文案、双向 `bindTagField` 接线；`_jobSignalDisposes`/`disposeJobSignal` 闭环）；跨仓金样对拍 40/40 例 0 差异。
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.1，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓后，40 例金样 + 新增包裹规则用例跨仓对拍仍 0 差异；v3.7.14 与 v3.7.15 合并后复验金样 cases 数组仍 40/40 例 0 差异。
+- **v3.7.16 合并验证记录**：唯一冲突 `manifest.json`（裁为 `3.7.16moon`）；`index.js` 与 `save-transaction.test.js` 自动合并。11 文件 +396/-10，上游变更两大主题：①**线保存兼容**——新增 `runtime/tauritavern-metadata-save.js`（+168，TT 专用 metadata-only 保存器：经宿主 `enqueueChatSave` 队列提交，排队期间取消/切换聊天/同键接管均不派发过期候选；IPC 限期只结束构画等待、结果待核实不自动重试），`index.js` 惰性接线（仅宿主存在 `__TAURITAVERN__` 时启用，`loadTransport` 动态 import 宿主模块 `../../../chat-payload-transport.js`，标准 ST 环境永不加载），`store.js` 的 `writeDataConfirmed` 向 `persistConfirmed` 传 `intentOwnerGuard`（保留同键交接边界至派发），`runtime/diagnostic-trace.js` 白名单新增 `unsupported-core-contract`/`tt-*` 七个保存原因，`api/diagnostics.js` 的 `diagnosticMessage` 新增未发出/待核实/冲突三态保存文案；②**Ticket 编号分类**——`business/lines/schema.js` 新增 `normalizeTicketId`（接受完整 SFW/NSFW 括注后缀、剥为纯编号，拒绝重复 Ticket 字段），`business/lines/prompt.js` 提示词将编号与分类分开展示（Ticket 字段只写纯编号），`business/lines/lines.test.js` +42 行新测试。**红测试复核**：上游扩充的 `save-transaction.test.js` 仍引用作者机器路径 `../../../../../util/fast-json-patch.js` 且仍未自带该文件（连续第二个版本），本地适配经 3-way 自动合并干净存活（上游新 import `diagnosticMessage`/`createTauriTavernMetadataSaver` 与本地适配注释共存）；上游千千结 4 例红测试依旧未修，本地适配版不受影响。验证：`node --check` 8 个变更运行时文件 + `manifest.json` JSON 解析通过；合并后全量 **208/208 全绿**（15 个测试文件；基线 201 → 208，上游新增 7 例测试全通过）；清洗器资产域（`memory.js`/`runtime/tag-sanitizer.js`/`golden.json`/`runtime/settings.js`/`utils/tag-names.js`/`memory.sanitizer.test.js`/`util/fast-json-patch.js`）合并前后零字节变化；本地资产逐项在位（index.js 5 处：`keepTags: ''` 默认 ×2、加长提示文案、双向 `bindTagField` 接线，上游 `'content'` 默认零残留；`_jobSignalDisposes`/`disposeJobSignal` 闭环，`disposeJobSignal` 定义于 `memory.js:82`、runL0/runL1 finally 调用在位）；合并结果相对 `upstream/master` 恰好收敛为 14 个本地产权文件；跨仓金样对拍 40/40 例 0 差异。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.1，召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致（v3.7.13 后复验仍 0 差异）；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓后，40 例金样 + 新增包裹规则用例跨仓对拍仍 0 差异；v3.7.14、v3.7.15 与 v3.7.16 合并后复验金样 cases 数组仍 40/40 例 0 差异。
