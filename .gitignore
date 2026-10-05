@@ -1,2 +1,6 @@
 .zcode
 .atomcode
+.pi/
+/tools/diagnostics.local.json
+
+/diagnostics.local.json

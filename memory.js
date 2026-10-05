@@ -5,7 +5,7 @@
 
 import { getContext } from '../../../extensions.js';
 import { eventSource, event_types } from '../../../../script.js';
-import { diagnosticMessage, safeDiagnosticLog } from './api/diagnostics.js';
+import { createGenerationDiagnosticScope, diagnosticMessage, safeDiagnosticLog } from './api/diagnostics.js';
 import { getChatRoot, persistExternalRoots, registerExternalStorageContext } from './runtime/external-chat-storage.js';
 import { ledgerHistoricalNarrativeMessage } from './business/ledger/capture.js';
 
@@ -51,7 +51,7 @@ function builtInMemoryEnabled() {
         && !settings.useQianQianJie;
 }
 
-// 请求同时受聊天生命周期和手动补齐/重构控制；切聊天或用户中止任一发生都必须立刻 Abort。
+// 请求受手动补齐/重构控制；聊天切换只更新当前楼层索引，不取消已合法返回链。
 // 手动组合信号以兼容没有 AbortSignal.any 的宿主。
 // 双源路径创建组合 signal；调用方在请求结束时通过 disposeJobSignal 清理 source relay。
 // Abort 时组合 signal 自己也会触发清理，覆盖调用方没有走到成功路径的情况。
@@ -155,8 +155,7 @@ function persist() {
     else ctx.saveMetadataDebounced?.();
 }
 
-// 手动补齐/重构使用确认式保存：外置后端要求 confirmed，宿主保存至少要完成调用；owner 在提交前后
-// 都必须仍指向同一聊天和记忆源。派发后无法确认的失败按 unknown 处理，不能冒充未写入。
+// 外置记忆仍需真实 record CAS 确认；普通聊天 metadata 只报告本地应用。
 async function persistConfirmed(ownerGuard) {
     if (!ownerGuard()) throw Object.assign(new Error('当前聊天或记忆源已变化，未保存本次记忆'), {
         code: 'stale-memory-owner',
@@ -183,22 +182,13 @@ async function persistConfirmed(ownerGuard) {
     if (!ctx) throw Object.assign(new Error('当前聊天不可用，未保存本次记忆'), { diagnosticCode: 'save', externalStorage: false });
     const save = typeof ctx.saveMetadata === 'function' ? ctx.saveMetadata.bind(ctx) : ctx.saveMetadataDebounced?.bind(ctx);
     if (typeof save !== 'function') throw Object.assign(new Error('宿主没有可用的聊天保存接口'), { diagnosticCode: 'save', externalStorage: false });
-    let result;
-    try { result = await save(); }
-    catch (cause) {
-        throw Object.assign(new Error(`聊天记忆保存失败（${cause?.message || 'unknown'}）`), {
-            code: 'memory-save-rejected', diagnosticCode: 'save', externalStorage: false, cause,
-            result: { ok: false, dispatched: true, commitState: 'unknown' },
-        });
+    try {
+        const result = save();
+        if (result && typeof result.then === 'function') result.catch(error => console.warn('[SP memory] host save rejected after local apply', error));
+    } catch (error) {
+        console.warn('[SP memory] host save threw after local apply', error);
     }
-    if (result === false || result?.ok === false) {
-        throw Object.assign(new Error(result?.reason || '聊天记忆保存失败'), { code: 'memory-save-rejected', diagnosticCode: 'save', externalStorage: false, result });
-    }
-    if (!ownerGuard()) throw Object.assign(new Error('保存期间当前聊天或记忆源已变化'), {
-        code: 'stale-memory-owner', externalStorage: false,
-        result: { ok: true, stale: true, dispatched: true, commitState: 'host-save-complete' },
-    });
-    return { ok: true, commitState: 'host-save-complete' };
+    return { ok: true, commitState: 'local-applied' };
 }
 
 function cloneMemoryRoot(root) {
@@ -480,7 +470,7 @@ async function handleJob(job) {
 }
 
 // ─── L0 generation ───────────────────────────────────────────────────────────
-async function runL0(groupKey, { queueL1 = true, memory = null } = {}) {
+async function runL0(groupKey, { queueL1 = true, memory = null, diagnosticScope = null } = {}) {
     if (!builtInMemoryEnabled()) return false;
     const lifecycleEpoch = _lifecycleEpoch;
     const m = memory || meta();
@@ -512,14 +502,18 @@ async function runL0(groupKey, { queueL1 = true, memory = null } = {}) {
     }
 
     // Snapshot chatId — after the await, we may be in a different chat
-    const chatIdSnap = getContext().chatId;
     const messages = buildL0Prompt(prevSummary, group.floors);
+    const diagnostic = diagnosticScope || createGenerationDiagnosticScope('memory', { background: true });
     let response = '';
     const signal = jobSignal();
     try {
-        response = await _callApi(messages, signal);
+        // 本地：提升的组合 signal（finally disposeJobSignal 闭环）+ 上游 v3.8.0 诊断 sink/accepted。
+        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（AGENTS.md §2 memory.js 条目）。
+        response = await _callApi(messages, signal, diagnostic.sink);
+        diagnostic.accepted();
     } catch (err) {
-        if (err?.name === 'AbortError') return false;    // chat switched; drop silently
+        if (err?.name === 'AbortError') return false;
+        diagnostic.rejected(err, { phase: 'request' });
         recordFailure(groupKey, err, 'request', m);
         return false;
     } finally {
@@ -528,10 +522,11 @@ async function runL0(groupKey, { queueL1 = true, memory = null } = {}) {
 
     // Guard: don't write results into a different chat's metadata
     const liveGroup = getStableGroups().find(item => item.key === groupKey);
-    if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap || !liveGroup || groupHash(liveGroup) !== hash) return false;
+    if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || !liveGroup || groupHash(liveGroup) !== hash) return false;
 
     if (!response || response.length < 10) {
-        recordFailure(groupKey, new Error('响应为空或过短'), 'request', m);
+        const error = new Error('响应为空或过短'); diagnostic.rejected(error, { phase: 'parse', reasonCode: 'empty-output' });
+        recordFailure(groupKey, error, 'request', m);
         return false;
     }
 
@@ -591,7 +586,7 @@ function maybeQueueL1(memory = null, changedGroupKey = null) {
     if (!existing) enqueue({ type: 'L1', groupKeys });
 }
 
-async function runL1(groupKeys, memory = null) {
+async function runL1(groupKeys, memory = null, diagnosticScope = null) {
     if (!builtInMemoryEnabled()) return false;
     const lifecycleEpoch = _lifecycleEpoch;
     const m = memory || meta();
@@ -605,14 +600,18 @@ async function runL1(groupKeys, memory = null) {
     const sources = chunk.map((group, index) => ({ groupKey: group.key, groupHash: groupHash(group), l0Hash: l0TextHash(entries[index]) }));
     const range = [chunk[0].floors[0].mesid, chunk.at(-1).floors.at(-1).mesid];
 
-    const chatIdSnap = getContext().chatId;
     const messages = buildL1Prompt(entries);
+    const diagnostic = diagnosticScope || createGenerationDiagnosticScope('memory', { background: true });
     let response = '';
     const signal = jobSignal();
     try {
-        response = await _callApi(messages, signal);
+        // 本地：提升的组合 signal（finally disposeJobSignal 闭环）+ 上游 v3.8.0 诊断 sink/accepted。
+        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（AGENTS.md §2 memory.js 条目）。
+        response = await _callApi(messages, signal, diagnostic.sink);
+        diagnostic.accepted();
     } catch (err) {
         if (err?.name === 'AbortError') return false;
+        diagnostic.rejected(err, { phase: 'request' });
         m.system.lastError = diagnosticMessage(err, { phase: 'request' });
         m.system.lastDiagnostic = safeDiagnosticLog('memory', 'request', err, { background: true });
         return false;
@@ -626,8 +625,8 @@ async function runL1(groupKeys, memory = null) {
         return group?.key === source.groupKey && groupHash(group) === source.groupHash
             && l0TextHash(l0) === source.l0Hash && validL0(group, m);
     });
-    if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || getContext().chatId !== chatIdSnap || !sourcesStillCurrent) return false;
-    if (!response || response.length < 20) return false;
+    if (_lifecycleEpoch !== lifecycleEpoch || !builtInMemoryEnabled() || !sourcesStillCurrent) return false;
+    if (!response || response.length < 20) { diagnostic.rejected(new Error('响应为空或过短'), { phase: 'parse', reasonCode: 'empty-output' }); return false; }
 
     const next = { range, text: response.trim(), ts: Date.now(), builtFrom: entries.length, sources };
     m.L1 = (m.L1 || []).filter(l1 => !(Array.isArray(l1.sources) && l1.sources.length === groupKeys.length && l1.sources.every((source, index) => source.groupKey === groupKeys[index])));
@@ -728,10 +727,8 @@ export async function fillMissing(onProgress) {
     // 循环固定读取本轮 controller；切聊天会清空模块引用，但仍会中止这个对象。
     const ctrl = _abortController = new AbortController();
     const lifecycleEpoch = _lifecycleEpoch;
-    const chatIdSnap = getContext().chatId;
     const ownerGuard = () => !ctrl.signal.aborted
         && _lifecycleEpoch === lifecycleEpoch
-        && getContext().chatId === chatIdSnap
         && builtInMemoryEnabled();
     let m = meta();
     if (!m) throw new Error('当前聊天的外置构画数据不可用');
@@ -772,7 +769,8 @@ export async function fillMissing(onProgress) {
         for (let i = 0; i < targets.length; i++) {
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(i);
             const beforeStep = i === 0 ? initial : cloneMemoryRoot(m);
-            const succeeded = await runL0(targets[i], { queueL1: false, memory: m });
+            const diagnostic = createGenerationDiagnosticScope('memory', { background: false });
+            const succeeded = await runL0(targets[i], { queueL1: false, memory: m, diagnosticScope: diagnostic });
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(i);
             if (!succeeded) {
                 try { await persistConfirmed(ownerGuard); }
@@ -784,7 +782,7 @@ export async function fillMissing(onProgress) {
                 const detail = m.failed[targets[i]]?.lastErr || '未生成有效摘要';
                 throw new Error(`L0 补齐失败：${targets[i]}（${detail}）`);
             }
-            // 每组只有在确认落盘后才计入成功进度，避免 UI 把仅存在于内存的摘要报成完成。
+            // 每组只有在 live root 已应用后才计入成功进度；宿主保存 Promise 不是 UI 门槛。
             try { await persistConfirmed(ownerGuard); }
             catch (error) {
                 if (ctrl.signal.aborted || !ownerGuard()) return aborted(i);
@@ -793,7 +791,9 @@ export async function fillMissing(onProgress) {
             }
             m = meta();
             if (!m) throw new Error('保存后无法重新读取当前聊天记忆');
+            diagnostic.locallyApplied({ reasonCode: 'memory-local-applied' });
             onProgress?.({ current: i + 1, total: targets.length, done: false });
+            diagnostic.uiDisplayed({ reasonCode: 'memory-progress-applied' });
         }
         let l1Generated = 0;
         const groupsAfterFill = getStableGroups();
@@ -829,15 +829,14 @@ export async function rebuildAll(onProgress) {
     if (!builtInMemoryEnabled()) return { aborted: true, current: 0, total: 0 };
     const ctrl = _abortController = new AbortController();   // 本地引用，防切聊天置空后 null 解引用（同 fillMissing）
     const lifecycleEpoch = _lifecycleEpoch;
-    const chatIdSnap = getContext().chatId;
     const ownerGuard = () => !ctrl.signal.aborted
         && _lifecycleEpoch === lifecycleEpoch
-        && getContext().chatId === chatIdSnap
         && builtInMemoryEnabled();
     const m = meta();
     if (!m) throw new Error('当前聊天的外置构画数据不可用');
     // 生成期只写私有副本，正式 root 继续供其它模块读取；完整生成后才进入一次性提交。
     const working = freshMeta();
+    const generationDiagnostics = [];
     try {
         const groups = getStableGroups();
         const totalSteps = groups.length + 1;   // 最后一步专门表示 confirmed 保存完成
@@ -849,7 +848,9 @@ export async function rebuildAll(onProgress) {
         _activeRebuild = { ctrl, sources: new Map(groups.flatMap(group => group.floors.map(floor => [Number(floor.mesid), hashStr(floor.text)]))) };
         for (let i = 0; i < groups.length; i++) {
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(i);
-            const succeeded = await runL0(groups[i].key, { queueL1: false, memory: working });
+            const diagnostic = createGenerationDiagnosticScope('memory', { background: false });
+            generationDiagnostics.push(diagnostic);
+            const succeeded = await runL0(groups[i].key, { queueL1: false, memory: working, diagnosticScope: diagnostic });
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(i);
             if (!succeeded) throw new Error(`L0 重建失败：${groups[i].key}（${working.failed[groups[i].key]?.lastErr || '未生成有效摘要'}）`);
             onProgress?.({ current: i + 1, total: totalSteps, phase: 'generating' });
@@ -860,7 +861,9 @@ export async function rebuildAll(onProgress) {
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(groups.length);
             const groupKeys = chunk.map(group => group.key);
             const range = [chunk[0].floors[0].mesid, chunk.at(-1).floors.at(-1).mesid];
-            const succeeded = await runL1(groupKeys, working);
+            const diagnostic = createGenerationDiagnosticScope('memory', { background: false });
+            generationDiagnostics.push(diagnostic);
+            const succeeded = await runL1(groupKeys, working, diagnostic);
             if (ctrl.signal.aborted || !ownerGuard()) return aborted(groups.length);
             if (!succeeded) throw new Error(`L1 重建失败：${range.join('-')}（${working.system.lastError || '未生成有效摘要'}）`);
         }
@@ -870,7 +873,8 @@ export async function rebuildAll(onProgress) {
         for (const key of Object.keys(m)) delete m[key];
         Object.assign(m, working);
         onProgress?.({ current: groups.length, total: totalSteps, phase: 'saving' });
-        try { await persistConfirmed(ownerGuard); }
+        let persisted;
+        try { persisted = await persistConfirmed(ownerGuard); }
         catch (error) {
             if (ctrl.signal.aborted || !ownerGuard()) {
                 const commitState = error?.result?.commitState;
@@ -886,8 +890,12 @@ export async function rebuildAll(onProgress) {
             if (error?.externalStorage === false) restoreMemoryRoot(m, previous);
             throw error;
         }
-        onProgress?.({ current: totalSteps, total: totalSteps, done: true, phase: 'complete', saveState: 'confirmed' });
-        return { aborted: false, current: totalSteps, total: totalSteps, phase: 'complete', saveState: 'confirmed', restored: false, unresolvedGroups };
+        for (const diagnostic of generationDiagnostics) {
+            diagnostic.locallyApplied({ reasonCode: 'memory-rebuild-local-applied' });
+            diagnostic.uiDisplayed({ reasonCode: 'memory-rebuild-progress-applied' });
+        }
+        onProgress?.({ current: totalSteps, total: totalSteps, done: true, phase: 'complete', saveState: persisted?.commitState || 'unknown' });
+        return { aborted: false, current: totalSteps, total: totalSteps, phase: 'complete', saveState: persisted?.commitState || 'unknown', restored: false, unresolvedGroups };
     } finally {
         // 保存期按最终提交状态决定保留候选或恢复旧 root；unknown 不能按“确定未写入”回滚。
         if (_activeRebuild?.ctrl === ctrl) _activeRebuild = null;
@@ -966,7 +974,6 @@ function onMessageMutated(mesId) {
 }
 
 function onChatChanged() {
-    abortAll('chat-boundary');
     _aiFloorSnapshot = captureAiFloorSnapshot();
     _stableGroupBaseline = new Set(getStableGroups().map(group => group.key));
     _autoEligibleGroups.clear();
