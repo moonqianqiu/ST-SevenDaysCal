@@ -80,20 +80,20 @@
    ```bash
    node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/axis/generation.test.js business/lines/lines.test.js business/lines/dashed-failure.test.js business/point/point.test.js business/memory/qianqianjie.test.js business/narrative-preferences.test.js business/narrative-pace.test.js business/outline/chat.test.js business/outline/judge-failure.test.js business/ui/panel-failure.test.js business/ledger/repository.test.js business/ledger/events.test.js business/ledger/ui-refresh.test.js business/space/chat.test.js business/theater/repository.test.js runtime/external-chat-storage-diagnostics.test.js runtime/local-diagnostics.test.js runtime/store-local-applied.test.js test/index-chat-boundary.test.mjs
    ```
-   *标准*：全部全绿（当前基线 **227/227**，上游新增用例后基数随之增长，以 §6.1 最近一行记录为准）。
+   *标准*：全部全绿（当前基线 **245/245**，上游新增用例后基数随之增长，以 §6.1 最近一行记录为准）。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
 ---
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；**跟踪上游基线**：已合入 `upstream/master`（Tag `v3.8.2`，提交 `b57cc0a`；合并前备份分支 `backup/master-before-upstream-v3.8.2`）；
-- **当前版本**：`manifest.json` 版本号 **`3.8.2moon`**；
+- **当前分支**：`master`；**跟踪上游基线**：已合入 `upstream/master`（Tag `v3.8.3`，提交 `5411566`；线 schema 重写与事件线合同收紧、外部聊天存储诊断、记忆上下文窗口化 excludeMesIds/includeRecentRaw）；本次未留备份分支（合并前基线 `0794b0f` 为合并提交 1739c19 的第一父提交，且已推送 origin）；
+- **当前版本**：`manifest.json` 版本号 **`3.8.3moon`**；
 - **最近提交历史**（更早见 `git log`）：
+  - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
   - `c001d45`：`merge: integrate upstream v3.8.2`（叙事推进幅度 narrativePace、事件制门票选择、每日赏乐卡 daily-menu、线迭代细化）；
   - `ed85bdc`：`merge: integrate upstream v3.7.16`（线保存兼容 TT metadata-only saver、Ticket 编号分类）；
-  - `29bc7e7`：`merge: integrate upstream v3.8.0`（保存合同 local-applied、runtime/local-diagnostics 全套、线生成 8 候选）；
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.11（2026-10-06，`c916304`；v0.6.9 召回实证选择与千事恢复 + v0.6.10 语义召回支持手动摘要 + v0.6.11 原始向量索引维护，合并后全量 1545/1545），召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓，每次合并后复验金样 cases 数组仍 40/40 例 0 差异。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.6.12（2026-10-07，`b422e28`；空档案初始化 + 召回来源核验，`recall-selector` 去重键 cseDuplicateKey，预算循环热点零触碰，合并后全量 1564/1564），召回回执重新生成已治本修复（秒级复用），两仓清洗器保持输出 100% 逐字节一致；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓，本次合并后复验金样 cases 数组仍 40/40 例 0 差异。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
@@ -106,6 +106,7 @@
 | v3.7.16 | — | `ed85bdc` | 唯一 manifest 冲突；TT metadata-only saver、Ticket 编号分类；上游仍缺 fast-json-patch，本地适配存活 | 208 |
 | v3.8.0 | 10-05 | `29bc7e7` | 5 冲突（.gitignore / manifest / AGENTS.md add-add / save-transaction modify-delete：采纳上游删除并回收 shim，产权 14→13 / memory.js 三块：`_callApi` 并集规则沉淀 §2）；上游 Windows 红测试本地适配（§2.1③）；保存合同改 local-applied 即返回；`spAdditionalParams` 新增修复 MK 跨仓红 | 203 |
 | v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突（`3.8.2moon`），其余 48 文件自动合并；narrativePace / 事件制门票 / daily-menu / 线首次生成合同收紧；合并前暗雷预审全排除 | 227 |
+| v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突（`3.8.2moon`→`3.8.3moon`），index.js/memory.js 自动合并双向无损（merged-vs-master 纯上游、merged-vs-upstream 纯本地）；上游改大纲创作合同文案与 Line 字段说明但未同步自带 2 红测试（narrative-preferences:36 / narrative-pace:88，纯上游树复现实证），断言随上游新文案本地适配、语义不变；上游新增测试全数 Windows 兼容 | 245 |
 
 ---
 
