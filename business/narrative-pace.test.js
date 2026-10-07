@@ -85,7 +85,8 @@ test('the selected global mode reaches line/outline creation and outline discuss
             assert.equal(countContract(prompt), 1);
             assert.match(prompt, new RegExp(labels[pace]));
         }
-        assert.match(line, /Line: 名称\|阶段\|时间锚点\|agency\|stall\|pin/);
+        // 上游 v3.8.3 把字段说明从代号改为取值枚举且未同步本测试（自带红），断言随上游新文案。
+        assert.match(line, /Line: 名称\|阶段\|时间锚点\|player或world\|true或false\|false/);
         assert.match(outline, /Beat: 推演时间\|标题\|类型\|所属故事线\|结果/);
         assert.match(outline, /Scene: 这一阶段发生什么/);
         assert.match(outline, /Subtext: 文学化题记或引言/);

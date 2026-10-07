@@ -33,7 +33,8 @@ test('every narrative scale reaches point, line, outline, outline chat, and outl
 test('meso names organization and group level, while outline remains stage based', () => {
     const meso = buildOutlineCreationContract(preferences('meso'));
     assert.match(meso, /中观：观察已有组织、家族、职场、学派或群体/);
-    assert.match(meso, /长线阶段大纲/);
+    // 上游 v3.8.3 改写合同文案但未同步本测试（自带红），断言随上游新文案、语义不变（阶段制大纲非日程）。
+    assert.match(meso, /节点代表阶段跨度，不是日程或单镜头/);
     assert.match(meso, /不是凭空增加冲突、阴谋或灾难的理由/);
     assert.doesNotMatch(meso, /数周至数月/);
 });
