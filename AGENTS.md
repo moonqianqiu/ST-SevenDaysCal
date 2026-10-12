@@ -10,7 +10,7 @@
 
 ## 1. 同步与版本惯例
 
-1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.8.2moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
+1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.8.5moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
 2. **分支与合并安全策略**：合并前先建备份分支 `git branch backup/master-before-upstream-vX.Y.Z master` → 在 `master` 执行 `git merge --no-ff upstream/master`（先以 `git merge-tree --write-tree master upstream/master` 预判，实际冲突应与预判一致）→ 裁决（§2）→ 四道门禁（§5）→ AGENTS.md 索引表追加记录 → push origin；验证完全通过前严禁向远程 force push。**备份分支仅在本地存在，合并验证通过并推送后即可清理**（`git branch -d`，其尖端已是 master 历史内的祖先提交，即合并提交的第一父状态，删除零损失）。
 
 ---
@@ -24,7 +24,8 @@
 | `manifest.json` | `version` 版本行冲突 | 直接裁为最新 `X.Y.Zmoon` |
 | `memory.js` | 状态声明区 / `jobSignal` / 清洗器区域 | **严格保留本地资产**：① `const _jobSignalDisposes = new WeakMap();` 与 `disposeJobSignal` 双向清理协议（§3.2）；② `stripTags` 保持由 `runtime/tag-sanitizer.js` import + re-export，**严禁退回上游内联旧正则**；③ 两处 `_callApi` 取并集——本地提升 `signal`（`finally disposeJobSignal` 闭环）+ 上游 `diagnostic.sink`/`diagnostic.accepted()`，**不可取上游内联 `jobSignal()`**，否则 dispose 落空/悬空；④ 上游新特性照常吸收并逐段复核 |
 | `utils/tag-names.js` | 上游若改 `normalizeTagRules` 或新增规则形态 | **本地泛化保留**（本地产权文件）：`literalWrapperRule` 三条件与 `normalizeTagRules` 对包裹规则「原样保留、大小写敏感」的语义（自 ST-MyriadKnots P5 同步）逐字保留；仅吸收上游对标签名字符合同的改动 |
-| `runtime/store-local-applied.test.js` | 上游扩充测试 vs 本地 Windows 适配 | 本地适配（`pathToFileURL(loader).href` / `fileURLToPath` 替代 POSIX 的裸路径 loader 与 `new URL(...).pathname`）**不可回退**；吸收上游新增测试代码，新代码先查 POSIX 专属写法（§2.2 ③） |
+| `runtime/store-local-applied.test.js` | 上游扩充 codec/诊断测试 vs 本地 Windows 适配 | 本地适配（`pathToFileURL(loader).href` / `fileURLToPath` 替代 POSIX 的裸路径 loader 与 `new URL(...).pathname`）**不可回退**；吸收上游新增测试代码，新代码先查 POSIX 专属写法（§2.1③） |
+| `runtime/store-codec.js` / `runtime/quick-reply-shortcuts.js` | 上游新增能力 | 正常吸收；codec 不得静默覆盖损坏/未来版本 wrapper，Quick Reply 只改构画自有组，不得改用户其他组或宿主总开关 |
 
 > **隐藏规则（易误判）——字面量包裹规则 `起始...结束`**：`LITERAL_WRAPPER_SEPARATOR = '...'` 与 `literalWrapperRule()` 定义于 `utils/tag-names.js`，由 `runtime/tag-sanitizer.js` 消费（`memory.js` 已不直接 import）。它不属于普通标签名正则（`[` 等非字母），但承担真实清洗语义（keep 剥壳取内、extra 连定界符整块删、支持嵌套与穿透）。**不要因为其不符合 XML 标签形态就当作无效规则删改**。
 
@@ -61,7 +62,7 @@
 ### 3.4 本地专属 / 适配测试文件
 - `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针（含通用包裹规则 4 例，自 ST-MyriadKnots P5 同步）；
 - `business/space/context.test.js`：空间意图识别与结构化卡片单测（上游没有）；
-- `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**，自 v3.7.13 起）：上游改千千结语义（仅 recall 作材料、前情单独存在不作材料、读取失败消息加前缀）但未同步自己的测试。**后续合并裁决规则**：先核对 `qianqianjie.js` 当前语义再裁决，勿盲目任取一侧；吸收上游 harness/新测试、保留本地适配断言；若上游日后自己补齐测试更新，以适配面最小的一方为准并删除本地适配注释。
+- `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**）：当前 `qianqianjie.js` 只以 recall 作材料，前情单独存在视为空，读取失败消息带「千千结记忆读取失败：」前缀；测试保留这些与实现一致的断言。后续合并裁决仍先核对实现语义，再吸收上游 harness/新测试，勿盲目任取一侧。
 
 ---
 
@@ -74,8 +75,8 @@
 ## 5. 合并验证清单与验收标准（4 道硬性门禁）
 
 1. **冲突标记零残留**：`git grep -n '^<<<<<<<'` 匹配数为 0。
-2. **本地资产文件清单校验**：合并结果相对 `upstream/master` 应只差以下 **13 个本地产权文件**（`git diff --name-only upstream/master`）：
-   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`。
+2. **本地资产文件清单校验**：合并结果相对 `upstream/master` 应只差以下核心本地产权文件（`git diff --name-only upstream/master`）：
+   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`。本次另有 3 个上游测试适配差异（`business/narrative-pace.test.js`、`business/narrative-preferences.test.js`、`runtime/quick-reply-shortcuts-host.test.js`）：前两者保持当前提示合同断言，后者保留 Windows loader 并在无 SillyTavern 宿主源码时跳过；其余差异须逐项解释。
 3. **全量自动化测试回归套件**（`node --test`，22 个测试文件）：
    ```bash
    node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/axis/generation.test.js business/lines/lines.test.js business/lines/dashed-failure.test.js business/point/point.test.js business/memory/qianqianjie.test.js business/narrative-preferences.test.js business/narrative-pace.test.js business/outline/chat.test.js business/outline/judge-failure.test.js business/ui/panel-failure.test.js business/ledger/repository.test.js business/ledger/events.test.js business/ledger/ui-refresh.test.js business/space/chat.test.js business/theater/repository.test.js runtime/external-chat-storage-diagnostics.test.js runtime/local-diagnostics.test.js runtime/store-local-applied.test.js test/index-chat-boundary.test.mjs
@@ -87,8 +88,8 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；**跟踪上游基线**：已合入 `upstream/master`（Tag `v3.8.3`，提交 `5411566`；线 schema 重写与事件线合同收紧、外部聊天存储诊断、记忆上下文窗口化 excludeMesIds/includeRecentRaw）；本次未留备份分支（合并前基线 `0794b0f` 为合并提交 1739c19 的第一父提交，且已推送 origin）；
-- **当前版本**：`manifest.json` 版本号 **`3.8.3moon`**；
+- **当前分支**：`master`；已合入上游 v3.8.5（提交 `dbeeaa8`），包含 v3.8.4 存储 codec/普通聊天存档压缩和 v3.8.5 Quick Reply 快捷入口；本次合并提交为 `a0a0ae7`，备份分支保留至推送完成；
+- **当前版本**：`manifest.json` 版本号 **`3.8.5moon`**；
 - **最近提交历史**（更早见 `git log`）：
   - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
   - `c001d45`：`merge: integrate upstream v3.8.2`（叙事推进幅度 narrativePace、事件制门票选择、每日赏乐卡 daily-menu、线迭代细化）；
@@ -107,12 +108,13 @@
 | v3.8.0 | 10-05 | `29bc7e7` | 5 冲突（.gitignore / manifest / AGENTS.md add-add / save-transaction modify-delete：采纳上游删除并回收 shim，产权 14→13 / memory.js 三块：`_callApi` 并集规则沉淀 §2）；上游 Windows 红测试本地适配（§2.1③）；保存合同改 local-applied 即返回；`spAdditionalParams` 新增修复 MK 跨仓红 | 203 |
 | v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突（`3.8.2moon`），其余 48 文件自动合并；narrativePace / 事件制门票 / daily-menu / 线首次生成合同收紧；合并前暗雷预审全排除 | 227 |
 | v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突（`3.8.2moon`→`3.8.3moon`），index.js/memory.js 自动合并双向无损（merged-vs-master 纯上游、merged-vs-upstream 纯本地）；上游改大纲创作合同文案与 Line 字段说明但未同步自带 2 红测试（narrative-preferences:36 / narrative-pace:88，纯上游树复现实证），断言随上游新文案本地适配、语义不变；上游新增测试全数 Windows 兼容 | 245 |
+| v3.8.5 | 10-11 | `a0a0ae7` | v3.8.4 接入普通存档 gzip codec、诊断 TTL 保留及保存前压缩；v3.8.5 接入 Quick Reply 快捷入口；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；合并 codec/Quick Reply 测试并保留 Windows loader 适配 | 245/245 核心；扩展 258/259（1 宿主测试跳过） |
 
 ---
 
 ## 上游保存与返回约定（v3.8.0 起，upstream AGENTS.md 收录）
 
-- 插件开启期间，合法生成结果持续应用到当前聊天；不要新增仅因 chatId、聊天 revision、楼层/参与者同一性而拒绝返回或保存的防御。仍保留用户主动取消、同通道新任务替代、真实输入/同键人工编辑冲突和格式校验。
+- 插件开启期间，合法生成结果持续应用到任务开始时确定的业务目标和数据来源；切换聊天本身不取消任务、不拒绝保存、不丢弃结果，也不把结果改投后来打开的聊天。不要新增仅因 chatId、聊天 revision、楼层/参与者同一性而拒绝返回或保存的防御。仍保留用户主动取消、同通道新任务替代、真实输入/同键人工编辑冲突和格式校验。
 - 普通 `chat_metadata` 写入（包括点、线、面、轴、间、记忆、刻度、导入和棱永久保存）先一次性应用完整 live 内容，再调用标准 `saveMetadata()` 并立即返回 `local-applied`。不等待宿主 Promise/ACK/readback，不据此回滚或重试。导入仍保留预览、用户确认、模块选择和真实冲突检查。
 - 独立外置 record/file 的真实版本 CAS 与冲突处理继续保留；不要把它扩展为普通聊天 metadata 的保存门槛。
 - 本机诊断仅由 gitignored 的 `diagnostics.local.json` 中 `{"enabled":true}` 启用，默认及其他安装关闭。读取本机记录使用 `node tools/read-local-diagnostics.mjs <absolute-user-root>`；不得把聊天正文、API 配置或凭证写入配置/文档。
