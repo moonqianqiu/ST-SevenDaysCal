@@ -239,3 +239,16 @@ test('普通问面不读取完整正式稿，未指定面目标的应用按钮�
     await context.buildMessages({ target: {}, userMsg: '现在面规划到哪？', historySnapshot: [] });
     assert.deepEqual(calls, ['projection']);
 });
+
+// ── 本地补充：上游 v3.9.0 版未覆盖的意图断言（自 master 迁移保留，语义不变） ──
+test('space intent keeps greetings and direct explanation requests as discussion', () => {
+    for (const message of ['你好', '请解释点卡片是什么']) {
+        assert.equal(classifySpaceIntent(message, []).action, 'discuss', message);
+    }
+});
+
+test('space intent routes explicit card generation and clarifies mixed requests', () => {
+    assert.equal(classifySpaceIntent('给我写一条线', []).action, 'semantic-route');
+    assert.equal(classifySpaceIntent('把这句话输出成点卡片', []).action, 'semantic-route');
+    assert.equal(classifySpaceIntent('给我一个点和一条线', []).action, 'clarify');
+});
