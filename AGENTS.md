@@ -76,19 +76,19 @@
 
 1. **冲突标记零残留**：`git grep -n '^<<<<<<<'` 匹配数为 0。
 2. **本地资产文件清单校验**：合并结果相对 `upstream/master` 应只差以下核心本地产权文件（`git diff --name-only upstream/master`）：
-   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`、`.gitattributes`（v3.9.0 起新增，`* text=auto eol=lf`，共 16 个文件）。本次（v3.9.0）另有适配差异：`runtime/quick-reply-shortcuts-host.test.js` 保留 Windows loader 适配（§2.1③）并在无 SillyTavern 宿主源码时 `t.skip`；`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs` 各删除 1 例上游过时用例（其 grep 的 `outlineChatMemoryError` / `readCreativeChatMemory` / `composeCreativeChatMessages` 已被 v3.9.0 从 `index.js` 移除，纯上游树复现同款红）；**`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 一律取上游**（上游删除了 `import { buildCreativeChatSystemPrompt } from '../state.js'`，该函数在 v3.9.0 树中已不存在，保留本地旧版必 import 失败）。其余差异须逐项解释。
+   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`、`.gitattributes`（v3.9.0 起新增，`* text=auto eol=lf`，共 17 个文件）。本次（v3.9.0）另有适配差异：`runtime/quick-reply-shortcuts-host.test.js` 保留 Windows loader 适配（§2.1③）并在无 SillyTavern 宿主源码时 `t.skip`；`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs` 各删除 1 例上游过时用例（其 grep 的 `outlineChatMemoryError` / `readCreativeChatMemory` / `composeCreativeChatMessages` 已被 v3.9.0 从 `index.js` 移除，纯上游树复现同款红）；**`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 一律取上游**（上游删除了 `import { buildCreativeChatSystemPrompt } from '../state.js'`，该函数在 v3.9.0 树中已不存在，保留本地旧版必 import 失败）。其余差异须逐项解释。
 3. **全量自动化测试回归套件**（`node --test` 全量 glob；**必须加 `--test-isolation=none`**——默认隔离会 spawn 子进程，在 DSH 沙箱下恒报 `spawn EPERM`，属沙箱边界而非代码缺陷）：
    ```bash
    node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：除已知沙箱伪红外全绿。`runtime/store-local-applied.test.js` 中 1 例 spawn 用例在沙箱内恒红（纯上游树同样红，非合并引入），真实终端下应为 pass/skip。v3.9.0 合并当期实测 **306 tests / 304 pass / 1 fail(沙箱 EPERM) / 1 skip**，以 §6.1 最近一行记录为准。
+   *标准*：除已知沙箱伪红外全绿。`runtime/store-local-applied.test.js` 中 1 例 spawn 用例在沙箱内恒红（纯上游树同样红，非合并引入），真实终端下应为 pass/skip。v3.9.0 合并当期实测 **308 tests / 306 pass / 1 fail(沙箱 EPERM) / 1 skip**，以 §6.1 最近一行记录为准。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
 ---
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v3.9.0**（上游提交 `4f2dc62`，内容提交 `61a0774`「refactor: unify module workflows and reduce redundant work」），本次合并提交 `dc05fe9`，备份分支 `backup/master-before-upstream-v3.9.0` 保留至推送完成；v3.9.0 主要变更：面讨论整体迁入「间」（删除 `business/outline/chat.js` 及 `index.js` 内 `outlineChatMemoryError`/`readCreativeChatMemory`/`composeCreativeChatMessages` 三个内联函数，改走 `business/space/context.js` 的 `buildMessages` 注入路径）、新增 `business/memory/summary-schema.js` 与 `business/ledger/settings.js`、`state.js` 删除 `buildCreativeChatSystemPrompt` 等面讨论提示函（迁至 `business/space/prompts.js`）；
+- **当前分支**：`master`；已合入上游 **v3.9.0**（上游提交 `4f2dc62`，内容提交 `61a0774`「refactor: unify module workflows and reduce redundant work」），本次合并提交 `dc05fe9`，随后收尾 3 提交：`e919bf4`（追回 `business/space/context.test.js` 本地 2 例意图断言）、`5f22ff6`（新增 `.gitattributes` `* text=auto eol=lf`）、`a8287b7`（AGENTS.md 归一 LF）；备份分支 `backup/master-before-upstream-v3.9.0` 保留至推送完成；v3.9.0 主要变更：面讨论整体迁入「间」（删除 `business/outline/chat.js` 及 `index.js` 内 `outlineChatMemoryError`/`readCreativeChatMemory`/`composeCreativeChatMessages` 三个内联函数，改走 `business/space/context.js` 的 `buildMessages` 注入路径）、新增 `business/memory/summary-schema.js` 与 `business/ledger/settings.js`、`state.js` 删除 `buildCreativeChatSystemPrompt` 等面讨论提示函（迁至 `business/space/prompts.js`）；
 - **当前版本**：`manifest.json` 版本号 **`3.9.0moon`**；
 - **最近提交历史**（更早见 `git log`）：
   - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
@@ -109,7 +109,7 @@
 | v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突（`3.8.2moon`），其余 48 文件自动合并；narrativePace / 事件制门票 / daily-menu / 线首次生成合同收紧；合并前暗雷预审全排除 | 227 |
 | v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突（`3.8.2moon`→`3.8.3moon`），index.js/memory.js 自动合并双向无损（merged-vs-master 纯上游、merged-vs-upstream 纯本地）；上游改大纲创作合同文案与 Line 字段说明但未同步自带 2 红测试（narrative-preferences:36 / narrative-pace:88，纯上游树复现实证），断言随上游新文案本地适配、语义不变；上游新增测试全数 Windows 兼容 | 245 |
 | v3.8.5 | 10-11 | `4a7e09a` | v3.8.4 接入普通存档 gzip codec、诊断 TTL 保留及保存前压缩；v3.8.5 接入 Quick Reply 快捷入口；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；合并 codec/Quick Reply 测试并保留 Windows loader 适配 | 245/245 核心；扩展 258/259（1 宿主测试跳过） |
-| v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：`manifest.json`→`3.9.0moon`；`index.js` 保留本地 §3.3 面板文案；`memory.js` 2 处（状态声明区保本地、清洗器区并集 + 补 `import { normalizeTagRules } from './utils/tag-names.js'` 以保住上游 `normalizeTagList`/`parseTagList` 导出面）；`runtime/quick-reply-shortcuts-host.test.js` 保本地 Windows loader 适配；`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` **取上游**（本地旧版 import 的 `buildCreativeChatSystemPrompt` 已被删除）；`business/space/context.test.js` 取上游全文 + 追加本地 2 例意图断言。另删 2 例上游过时用例（`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`），均为 v3.9.0 删除 `index.js` 内联记忆函数后未同步的上游自带红 | 306 tests / 304 pass（1 例沙箱 EPERM 伪红）/ 1 skip |
+| v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：`manifest.json`→`3.9.0moon`；`index.js` 保留本地 §3.3 面板文案；`memory.js` 2 处（状态声明区保本地、清洗器区并集 + 补 `import { normalizeTagRules } from './utils/tag-names.js'` 以保住上游 `normalizeTagList`/`parseTagList` 导出面）；`runtime/quick-reply-shortcuts-host.test.js` 保本地 Windows loader 适配；`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` **取上游**（本地旧版 import 的 `buildCreativeChatSystemPrompt` 已被删除）；`business/space/context.test.js` 取上游全文 + 追加本地 2 例意图断言。另删 2 例上游过时用例（`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`），均为 v3.9.0 删除 `index.js` 内联记忆函数后未同步的上游自带红 | 308 tests / 306 pass（1 例沙箱 EPERM 伪红）/ 1 skip |
 
 ---
 
