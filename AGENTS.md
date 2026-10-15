@@ -10,7 +10,7 @@
 
 ## 1. 同步与版本惯例
 
-1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.8.5moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
+1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.9.0moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
 2. **分支与合并安全策略**：合并前先建备份分支 `git branch backup/master-before-upstream-vX.Y.Z master` → 在 `master` 执行 `git merge --no-ff upstream/master`（先以 `git merge-tree --write-tree master upstream/master` 预判，实际冲突应与预判一致）→ 裁决（§2）→ 四道门禁（§5）→ AGENTS.md 索引表追加记录 → push origin；验证完全通过前严禁向远程 force push。**备份分支仅在本地存在，合并验证通过并推送后即可清理**（`git branch -d`，其尖端已是 master 历史内的祖先提交，即合并提交的第一父状态，删除零损失）。
 
 ---
@@ -61,7 +61,7 @@
 
 ### 3.4 本地专属 / 适配测试文件
 - `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针（含通用包裹规则 4 例，自 ST-MyriadKnots P5 同步）；
-- `business/space/context.test.js`：空间意图识别与结构化卡片单测（上游没有）；
+- `business/space/context.test.js`：**上游文件 + 本地 2 例意图断言**（v3.9.0 起；上游版不含「你好 / 请解释点卡片是什么 → discuss」与「给我写一条线 / 输出成点卡片 → semantic-route、给我一个点和一条线 → clarify」两组；合并时取上游全文并追加本地两组，勿整体回退——上游 `classifySpaceIntent` 签名与语义持续兼容）；
 - `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**）：当前 `qianqianjie.js` 只以 recall 作材料，前情单独存在视为空，读取失败消息带「千千结记忆读取失败：」前缀；测试保留这些与实现一致的断言。后续合并裁决仍先核对实现语义，再吸收上游 harness/新测试，勿盲目任取一侧。
 
 ---
@@ -76,20 +76,20 @@
 
 1. **冲突标记零残留**：`git grep -n '^<<<<<<<'` 匹配数为 0。
 2. **本地资产文件清单校验**：合并结果相对 `upstream/master` 应只差以下核心本地产权文件（`git diff --name-only upstream/master`）：
-   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`。本次另有 3 个上游测试适配差异（`business/narrative-pace.test.js`、`business/narrative-preferences.test.js`、`runtime/quick-reply-shortcuts-host.test.js`）：前两者保持当前提示合同断言，后者保留 Windows loader 并在无 SillyTavern 宿主源码时跳过；其余差异须逐项解释。
-3. **全量自动化测试回归套件**（`node --test`，22 个测试文件）：
+   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`utils/tag-names.js`、`.gitattributes`（v3.9.0 起新增，`* text=auto eol=lf`，共 16 个文件）。本次（v3.9.0）另有适配差异：`runtime/quick-reply-shortcuts-host.test.js` 保留 Windows loader 适配（§2.1③）并在无 SillyTavern 宿主源码时 `t.skip`；`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs` 各删除 1 例上游过时用例（其 grep 的 `outlineChatMemoryError` / `readCreativeChatMemory` / `composeCreativeChatMessages` 已被 v3.9.0 从 `index.js` 移除，纯上游树复现同款红）；**`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 一律取上游**（上游删除了 `import { buildCreativeChatSystemPrompt } from '../state.js'`，该函数在 v3.9.0 树中已不存在，保留本地旧版必 import 失败）。其余差异须逐项解释。
+3. **全量自动化测试回归套件**（`node --test` 全量 glob；**必须加 `--test-isolation=none`**——默认隔离会 spawn 子进程，在 DSH 沙箱下恒报 `spawn EPERM`，属沙箱边界而非代码缺陷）：
    ```bash
-   node --test memory.sanitizer.test.js business/space/context.test.js business/axis/axis.test.js business/axis/generation.test.js business/lines/lines.test.js business/lines/dashed-failure.test.js business/point/point.test.js business/memory/qianqianjie.test.js business/narrative-preferences.test.js business/narrative-pace.test.js business/outline/chat.test.js business/outline/judge-failure.test.js business/ui/panel-failure.test.js business/ledger/repository.test.js business/ledger/events.test.js business/ledger/ui-refresh.test.js business/space/chat.test.js business/theater/repository.test.js runtime/external-chat-storage-diagnostics.test.js runtime/local-diagnostics.test.js runtime/store-local-applied.test.js test/index-chat-boundary.test.mjs
+   node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：全部全绿（当前基线 **245/245**，上游新增用例后基数随之增长，以 §6.1 最近一行记录为准）。
+   *标准*：除已知沙箱伪红外全绿。`runtime/store-local-applied.test.js` 中 1 例 spawn 用例在沙箱内恒红（纯上游树同样红，非合并引入），真实终端下应为 pass/skip。v3.9.0 合并当期实测 **306 tests / 304 pass / 1 fail(沙箱 EPERM) / 1 skip**，以 §6.1 最近一行记录为准。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
 ---
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 v3.8.5（提交 `dbeeaa8`），包含 v3.8.4 存储 codec/普通聊天存档压缩和 v3.8.5 Quick Reply 快捷入口；本次合并提交为 `4a7e09a`，备份分支保留至推送完成；
-- **当前版本**：`manifest.json` 版本号 **`3.8.5moon`**；
+- **当前分支**：`master`；已合入上游 **v3.9.0**（上游提交 `4f2dc62`，内容提交 `61a0774`「refactor: unify module workflows and reduce redundant work」），本次合并提交 `dc05fe9`，备份分支 `backup/master-before-upstream-v3.9.0` 保留至推送完成；v3.9.0 主要变更：面讨论整体迁入「间」（删除 `business/outline/chat.js` 及 `index.js` 内 `outlineChatMemoryError`/`readCreativeChatMemory`/`composeCreativeChatMessages` 三个内联函数，改走 `business/space/context.js` 的 `buildMessages` 注入路径）、新增 `business/memory/summary-schema.js` 与 `business/ledger/settings.js`、`state.js` 删除 `buildCreativeChatSystemPrompt` 等面讨论提示函（迁至 `business/space/prompts.js`）；
+- **当前版本**：`manifest.json` 版本号 **`3.9.0moon`**；
 - **最近提交历史**（更早见 `git log`）：
   - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
   - `c001d45`：`merge: integrate upstream v3.8.2`（叙事推进幅度 narrativePace、事件制门票选择、每日赏乐卡 daily-menu、线迭代细化）；
@@ -109,6 +109,7 @@
 | v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突（`3.8.2moon`），其余 48 文件自动合并；narrativePace / 事件制门票 / daily-menu / 线首次生成合同收紧；合并前暗雷预审全排除 | 227 |
 | v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突（`3.8.2moon`→`3.8.3moon`），index.js/memory.js 自动合并双向无损（merged-vs-master 纯上游、merged-vs-upstream 纯本地）；上游改大纲创作合同文案与 Line 字段说明但未同步自带 2 红测试（narrative-preferences:36 / narrative-pace:88，纯上游树复现实证），断言随上游新文案本地适配、语义不变；上游新增测试全数 Windows 兼容 | 245 |
 | v3.8.5 | 10-11 | `4a7e09a` | v3.8.4 接入普通存档 gzip codec、诊断 TTL 保留及保存前压缩；v3.8.5 接入 Quick Reply 快捷入口；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；合并 codec/Quick Reply 测试并保留 Windows loader 适配 | 245/245 核心；扩展 258/259（1 宿主测试跳过） |
+| v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：`manifest.json`→`3.9.0moon`；`index.js` 保留本地 §3.3 面板文案；`memory.js` 2 处（状态声明区保本地、清洗器区并集 + 补 `import { normalizeTagRules } from './utils/tag-names.js'` 以保住上游 `normalizeTagList`/`parseTagList` 导出面）；`runtime/quick-reply-shortcuts-host.test.js` 保本地 Windows loader 适配；`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` **取上游**（本地旧版 import 的 `buildCreativeChatSystemPrompt` 已被删除）；`business/space/context.test.js` 取上游全文 + 追加本地 2 例意图断言。另删 2 例上游过时用例（`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`），均为 v3.9.0 删除 `index.js` 内联记忆函数后未同步的上游自带红 | 306 tests / 304 pass（1 例沙箱 EPERM 伪红）/ 1 skip |
 
 ---
 
@@ -119,3 +120,4 @@
 - 独立外置 record/file 的真实版本 CAS 与冲突处理继续保留；不要把它扩展为普通聊天 metadata 的保存门槛。
 - 本机诊断仅由 gitignored 的 `diagnostics.local.json` 中 `{"enabled":true}` 启用，默认及其他安装关闭。读取本机记录使用 `node tools/read-local-diagnostics.mjs <absolute-user-root>`；不得把聊天正文、API 配置或凭证写入配置/文档。
 - 提示词必须明确要求完整返回所需字段与结构。字段内部若有明确含义且可按现有规则归一的格式差异，应复用既有归一与合法部分处理；不要因可收敛的局部差异拒绝整批结果，也不要伪造缺失的身份或语义。事件线仅真正首次生成最多 8 条未锁模型候选；以当前线存档是否存在和合法既有来源区分首次，已有合法空存档与手动重新生成均属后续。首次模型超量时按原始顺序只取前 8 个 Line 块再校验，第 9 条起不参与首次业务判断；后续按剧情自然增加或减少，不截第 9 条、不设持续八条上限、不凑数。只审实际返回的旧/新身份和真实唯一 Ticket，不新增旧活线全返门槛、不回填省略旧线或伪造其终态；人工锁线完整保留。合法闭合空 widget 可以归零，空响应、散文和坏结构不冒充合法空结果。普通保存与真实外置 CAS 沿上方合同。
+
