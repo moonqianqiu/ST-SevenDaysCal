@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classifySpaceIntent, createSpaceContext, requestedSpaceMaterials } from './context.js';
+import { buildSpaceHelpText } from './prompts.js';
 import { appendSpaceAssistant, pointRawToken } from './schema.js';
 import { createSpaceRenderer } from './render.js';
 import { markImportedSpaceHistory } from '../../runtime/portable-chat-data.js';
@@ -184,7 +185,7 @@ test('面请求区分“别讨论后直接生成”和“不要生成”，去�
 
 test('明确委托的“来/出”数量请求读取完整正式稿并带面候选合同', async () => {
     const original = '<outline_widget>Beat: 当前|正式稿|阶段|主线|保留\nScene: 当前正文</outline_widget>';
-    for (const message of ['给我来一版大纲', '给我出一版面', '给我来个面', '帮我出一版面']) {
+    for (const message of ['给我来一版大纲', '给我出一版面', '给我来个面', '帮我出一版面', '把他们的背景写进面大纲，张三和李四']) {
         const calls = [];
         const context = createSpaceContext({
             context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
@@ -248,7 +249,387 @@ test('space intent keeps greetings and direct explanation requests as discussion
 });
 
 test('space intent routes explicit card generation and clarifies mixed requests', () => {
-    assert.equal(classifySpaceIntent('给我写一条线', []).action, 'semantic-route');
-    assert.equal(classifySpaceIntent('把这句话输出成点卡片', []).action, 'semantic-route');
+    // 上游 v3.9.1 起重写 classifySpaceIntent：显式生成请求不再经 'semantic-route' 中转，
+    // 而是直接给出 'write' + kind（上游同版测试以 ['write','schedule_widget'] 断言）。
+    // 本地测试意图（显式生成应被路由而非当作讨论）不变，仅对齐新返回值域。
+    assert.deepEqual(
+        [classifySpaceIntent('给我写一条线', []).action, classifySpaceIntent('给我写一条线', []).kind],
+        ['write', 'line_widget'],
+    );
+    assert.deepEqual(
+        [classifySpaceIntent('把这句话输出成点卡片', []).action, classifySpaceIntent('把这句话输出成点卡片', []).kind],
+        ['write', 'schedule_widget'],
+    );
     assert.equal(classifySpaceIntent('给我一个点和一条线', []).action, 'clarify');
+});
+
+test('间本轮明确目标优先于背景模块与最近卡型', () => {
+    const faceHistory = [{
+        role: 'assistant',
+        content: '<outline_widget>Beat: 未来|旧面节点|关系|主线|结果\nScene: 旧面正文</outline_widget>',
+    }];
+    for (const message of ['生成到点', '面用不了，生成到点', '把刚才的面改成点', '不要面，生成到点']) {
+        const intent = classifySpaceIntent(message, faceHistory);
+        assert.deepEqual([intent.action, intent.kind], ['write', 'schedule_widget'], message);
+    }
+    assert.deepEqual(
+        [classifySpaceIntent('生成点和线', []).action, classifySpaceIntent('生成点和线', []).reason],
+        ['clarify', 'ambiguous-widget-kind'],
+    );
+    assert.equal(classifySpaceIntent('创建一条事件线，再插个点', []).reason, 'ambiguous-widget-kind');
+    assert.equal(classifySpaceIntent('解释“生成到点”是什么意思', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('别给我写一条线', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('不要生成点卡', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('请解释“生成到点”这句话', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('只讨论，不生成卡片', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('如何生成到点？', faceHistory).action, 'discuss');
+    assert.equal(classifySpaceIntent('怎么生成到点？', faceHistory).action, 'discuss');
+    const faultBackground = classifySpaceIntent('面模块没生效，生成到点', faceHistory);
+    assert.deepEqual([faultBackground.action, faultBackground.kind, faultBackground.faq], ['write', 'schedule_widget', false]);
+    assert.deepEqual(
+        [classifySpaceIntent('把刚才的思路再短些', faceHistory).action, classifySpaceIntent('把刚才的思路再短些', faceHistory).kind],
+        ['revise-recent', 'outline_widget'],
+    );
+});
+
+test('从旧面转换为点只注入旧卡正文素材并使用新点合同', async () => {
+    const faceHistory = [{
+        role: 'assistant',
+        content: '<outline_widget>Beat: 未来|旧面节点|关系|主线|结果\nScene: 转换素材正文</outline_widget>',
+    }];
+    const calls = [];
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readOutlineDraftSnapshot: () => { calls.push('full-outline'); return { raw: '不可额外读取的正式面' }; },
+        readOutline: () => { calls.push('outline-projection'); return '面摘要'; },
+        readPointScopes: () => [{ view: 'user', charName: '', raw: 'CURRENT_POINT' }],
+        numberedPoints: raw => `#1 旧点\n#2 ${raw}`,
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const messages = await context.buildMessages({
+        target: {}, userMsg: '把刚才的面改成点', historySnapshot: faceHistory,
+    });
+    assert.equal(messages.expectedWidgetKind, 'schedule_widget');
+    assert.deepEqual(calls, []);
+    assert.match(messages[0].content, /转换素材正文/);
+    assert.doesNotMatch(messages[0].content, /<outline_widget>|本轮面编辑草稿|不要新增/);
+    assert.match(messages[0].content, /<schedule_widget>/);
+    assert.match(messages[0].content, /CURRENT_POINT/);
+});
+
+test('点线转面沿用旧卡正文来源，普通新点不把目标卡片误作回指', async () => {
+    const pointHistory = [{ role: 'assistant', content: '<schedule_widget>Event: main|点源标题|点源正文|明早|港口|关系进展</schedule_widget>' }];
+    const lineHistory = [{ role: 'assistant', content: '<line_widget>Line: 线源标题|关系变化|筹备|1周|旧线正文|world|false</line_widget>' }];
+    const calls = [];
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readOutlineDraftSnapshot: () => { calls.push('formal-outline'); return { raw: '<outline_widget>当前正式面基准</outline_widget>' }; },
+        readPointScopes: () => [], readLineRaw: () => '',
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const pointToOutline = await context.buildMessages({ target: {}, userMsg: '把刚才的点改成面', historySnapshot: pointHistory });
+    assert.equal(pointToOutline.expectedWidgetKind, 'outline_widget');
+    assert.match(pointToOutline[0].content, /点源正文/);
+    assert.match(pointToOutline[0].content, /当前正式面基准/);
+    assert.match(pointToOutline[0].content, /仅作本轮转换素材/);
+    const lineToOutline = await context.buildMessages({ target: {}, userMsg: '把刚才的线改成面', historySnapshot: lineHistory });
+    assert.equal(lineToOutline.expectedWidgetKind, 'outline_widget');
+    assert.match(lineToOutline[0].content, /旧线正文/);
+    assert.deepEqual(calls, ['formal-outline', 'formal-outline']);
+
+    const newPoint = await context.buildMessages({
+        target: {}, userMsg: '生成一张点卡片',
+        historySnapshot: [{ role: 'assistant', content: '<outline_widget>不应带入的旧面正文</outline_widget>' }],
+    });
+    assert.equal(newPoint.expectedWidgetKind, 'schedule_widget');
+    assert.doesNotMatch(newPoint[0].content, /不应带入的旧面正文|旧面卡片正文/);
+});
+
+test('点目标动作优先于前置面模块故障，生成用法问句仍按帮助回答', async () => {
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readPointScopes: () => [], readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const failureThenGenerate = await context.buildMessages({
+        target: {}, userMsg: '面模块没生效，生成到点', historySnapshot: [],
+    });
+    assert.equal(failureThenGenerate.expectedWidgetKind, 'schedule_widget');
+    assert.match(failureThenGenerate[0].content, /<schedule_widget>/);
+    assert.doesNotMatch(failureThenGenerate[0].content, /构画·功能与设置速查/);
+
+    const howTo = await context.buildMessages({ target: {}, userMsg: '如何生成到点？', historySnapshot: [] });
+    assert.equal(howTo.expectedWidgetKind, undefined);
+    assert.doesNotMatch(howTo[0].content, /<schedule_widget>/);
+});
+
+test('明确来源类型从历史中选择同类卡，无来源类型才用最近卡', async () => {
+    const mixedHistory = [
+        { role: 'assistant', content: '<outline_widget>面源正文</outline_widget>' },
+        { role: 'assistant', content: '<line_widget>Line: 线源|筹备|近日|world|线源正文|false|false</line_widget>' },
+    ];
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readOutlineDraftSnapshot: () => ({ raw: '正式面基准' }),
+        readPointScopes: () => [], readLineRaw: () => '',
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const faceToPoint = await context.buildMessages({
+        target: {}, userMsg: '把刚才的面改成点', historySnapshot: mixedHistory,
+    });
+    assert.equal(faceToPoint.expectedWidgetKind, 'schedule_widget');
+    assert.match(faceToPoint[0].content, /面源正文/);
+    assert.doesNotMatch(faceToPoint[0].content, /线源正文/);
+
+    const faceNoBa = await context.buildMessages({
+        target: {}, userMsg: '刚才那张面改成点', historySnapshot: mixedHistory,
+    });
+    assert.equal(faceNoBa.expectedWidgetKind, 'schedule_widget');
+    assert.match(faceNoBa[0].content, /面源正文/);
+    assert.doesNotMatch(faceNoBa[0].content, /线源正文/);
+
+    const missingSource = await context.buildMessages({
+        target: {}, userMsg: '把刚才的面改成点',
+        historySnapshot: [{ role: 'assistant', content: '<line_widget>线源正文</line_widget>' }],
+    });
+    assert.equal(missingSource.expectedWidgetKind, undefined);
+    assert.match(missingSource[0].content, /没有该类型的卡片|提供那张卡的内容/);
+    assert.doesNotMatch(missingSource[0].content, /线源正文|<schedule_widget>/);
+
+    const untyped = await context.buildMessages({
+        target: {}, userMsg: '把刚才那张改成点', historySnapshot: mixedHistory,
+    });
+    assert.equal(untyped.expectedWidgetKind, 'schedule_widget');
+    assert.match(untyped[0].content, /线源正文/);
+    assert.doesNotMatch(untyped[0].content, /面源正文/);
+});
+
+test('当前点线列表只在明确编辑现有同类条目时附加禁止新增合同', async () => {
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readPointScopes: () => [{ view: 'user', charName: '', raw: 'CURRENT_POINT' }],
+        readLineRaw: () => 'CURRENT_LINE', parseLines: raw => [{ name: raw, stage: '延展', desc: '旧线' }],
+        numberedPoints: raw => `#1 旧点\n#2 ${raw}`,
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const point = await context.buildMessages({ target: {}, userMsg: '生成一条点卡', historySnapshot: [] });
+    assert.match(point[0].content, /CURRENT_POINT/);
+    assert.doesNotMatch(point[0].content, /不要新增/);
+    const line = await context.buildMessages({ target: {}, userMsg: '生成一条线卡', historySnapshot: [] });
+    assert.match(line[0].content, /CURRENT_LINE/);
+    assert.doesNotMatch(line[0].content, /不要新增/);
+    const edited = await context.buildMessages({ target: {}, userMsg: '把第2条点改为周五', historySnapshot: [] });
+    assert.match(edited[0].content, /不要新增/);
+    assert.match(edited[0].content, /#2 CURRENT_POINT/);
+    const editedLine = await context.buildMessages({ target: {}, userMsg: '把第1条线改为周五', historySnapshot: [] });
+    assert.match(editedLine[0].content, /不要新增/);
+    assert.match(editedLine[0].content, /CURRENT_LINE/);
+});
+
+test('间内仅线卡提示复用关系自主校准，普通讨论与点面提示不受影响', async () => {
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readPointScopes: () => [], readLineRaw: () => '', numberedPoints: () => '',
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const line = await context.buildMessages({ target: {}, userMsg: '生成一条线卡', historySnapshot: [] });
+    assert.match(line[0].content, /【人物自主与相互回应】/);
+    assert.match(line[0].content, /未发生的回应不写成事实/);
+    assert.match(line[0].content, /【输出前复核】/);
+    assert.match(line[0].content, /只输出约定结构，不展示复核过程/);
+
+    for (const userMsg of ['生成一个点卡', '生成一个面方案', '这段关系里两个人怎么理解彼此？']) {
+        const messages = await context.buildMessages({ target: {}, userMsg, historySnapshot: [] });
+        assert.doesNotMatch(messages[0].content, /【人物自主与相互回应】/, userMsg);
+        assert.doesNotMatch(messages[0].content, /【输出前复核】/, userMsg);
+    }
+});
+
+test('语义路由候选包含仅选中线卡时适用的人物自主与输出复核提示', async () => {
+    const userMsg = '帮我处理一下这件事';
+    assert.equal(classifySpaceIntent(userMsg, []).action, 'semantic-route');
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readPointScopes: () => [], readLineRaw: () => '', numberedPoints: () => '',
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    const messages = await context.buildMessages({ target: {}, userMsg, historySnapshot: [] });
+    assert.match(messages[0].content, /仅在线卡是本轮选定输出时适用/);
+    assert.match(messages[0].content, /【人物自主与相互回应】/);
+    assert.match(messages[0].content, /【输出前复核】/);
+});
+
+test('间格式纠错沿用可信预期卡型和原请求，并为明确第 N 条线重发提供当前编辑合同', async () => {
+    const kinds = [
+        ['schedule_widget', '生成一张点卡', '<schedule_widget>', 'CURRENT_POINT'],
+        ['line_widget', '生成一条线卡', '<line_widget>', 'CURRENT_LINE'],
+        ['almanac_widget', '生成一个历卡', '<almanac_widget>', 'CURRENT_ALMANAC'],
+        ['era_widget', '生成一张历法卡', '<era_widget>', 'CURRENT_CALENDAR'],
+        ['outline_widget', '生成一份面方案', '<outline_widget>', 'CURRENT_OUTLINE'],
+    ];
+    const context = createSpaceContext({
+        context: () => ({ name1: '我', name2: 'TA' }), settings: () => ({}),
+        readPointScopes: () => [{ view: 'user', raw: 'CURRENT_POINT' }],
+        numberedPoints: raw => `#1 ${raw}`,
+        readLineRaw: () => 'CURRENT_LINE', parseLines: () => Array.from({ length: 9 }, (_, index) => ({ name: index === 8 ? 'CURRENT_LINE' : `旧线${index + 1}`, stage: '延展', desc: '当前线' })),
+        readAlmanacText: () => 'CURRENT_ALMANAC', readCalendarText: () => 'CURRENT_CALENDAR',
+        readOutlineDraftSnapshot: () => ({ raw: 'CURRENT_OUTLINE' }),
+        readMemory: async () => '', readRecent: async () => '', readWorldInfo: async () => '',
+    });
+    for (const [kind, originalRequest, tag, current] of kinds) {
+        let history = [{ role: 'user', content: originalRequest }];
+        history = appendSpaceAssistant(history, '{"operation":"upsert_character_state"}', { expectedWidgetKind: kind });
+        history.push(
+            { role: 'user', content: '卡片格式还是不对' },
+            { role: 'assistant', content: '请把模板发给我。' },
+        );
+        const messages = await context.buildMessages({
+            target: {}, userMsg: '你直接去看点和线的替换还不行吗', historySnapshot: history,
+        });
+        assert.equal(messages.expectedWidgetKind, kind, originalRequest);
+        assert.match(messages[0].content, new RegExp(tag.replace(/[<>]/g, '\\$&')), originalRequest);
+        assert.match(messages[0].content, new RegExp(current), originalRequest);
+        assert.match(messages[0].content, /不要要求用户提供内部模板/, originalRequest);
+        assert.doesNotMatch(messages[0].content, /不要新增/, originalRequest);
+        if (kind === 'almanac_widget') assert.match(messages[0].content, /CURRENT_CALENDAR/);
+    }
+
+    const lineHistory = [{ role: 'assistant', content: '当前有九条线。' }];
+    const line = await context.buildMessages({
+        target: {}, userMsg: '把第9条线按正确卡片格式重新输出', historySnapshot: lineHistory,
+    });
+    assert.equal(classifySpaceIntent('把第9条线按正确卡片格式重新输出', lineHistory).action, 'write');
+    assert.equal(line.expectedWidgetKind, 'line_widget');
+    assert.match(line[0].content, /#9 CURRENT_LINE/);
+    assert.match(line[0].content, /不要新增/);
+    assert.match(line[0].content, /序号取对应列表里 #N 的数字 N/);
+
+    const editedHistory = [{ role: 'user', content: '把第2条线改成周五' }];
+    editedHistory.splice(1, 0, ...appendSpaceAssistant(editedHistory, '{"bad":true}', { expectedWidgetKind: 'line_widget' }).slice(1));
+    const correctedEdit = await context.buildMessages({
+        target: {}, userMsg: '卡片格式还是不对', historySnapshot: editedHistory,
+    });
+    assert.match(correctedEdit[0].content, /不要新增/);
+    assert.match(correctedEdit[0].content, /#9 CURRENT_LINE/);
+
+    const explicitSwitch = classifySpaceIntent('把上一张点卡改成线卡格式重新输出', [
+        { role: 'assistant', content: '{"bad":true}', expectedWidgetKind: 'schedule_widget' },
+    ]);
+    assert.deepEqual([explicitSwitch.action, explicitSwitch.kind], ['write', 'line_widget']);
+    assert.equal(classifySpaceIntent('卡片格式还是不对', []).action, 'clarify');
+    assert.equal(classifySpaceIntent('这段关系为什么会这样？', [
+        { role: 'assistant', content: '{"bad":true}', expectedWidgetKind: 'line_widget' },
+    ]).action, 'discuss');
+});
+
+test('间连续格式纠错保留最初编辑性质，且本轮新建、解释和换型请求优先', () => {
+    const originalRequest = '把第2条线改成周五';
+    let history = [{ role: 'user', content: originalRequest }];
+    const originalIntent = classifySpaceIntent(originalRequest, history);
+    assert.equal(originalIntent.editExisting, true);
+    history = appendSpaceAssistant(history, '{"operation":"upsert_character_state"}', {
+        expectedWidgetKind: originalIntent.kind,
+    });
+
+    const firstCorrection = classifySpaceIntent('卡片格式还是不对', history);
+    assert.equal(firstCorrection.editExisting, true);
+    history = appendSpaceAssistant(history, '请把模板发给我。', {
+        expectedWidgetKind: firstCorrection.kind,
+    });
+    const secondCorrection = classifySpaceIntent('你直接去看点和线的替换还不行吗', history);
+    assert.equal(secondCorrection.kind, 'line_widget');
+    assert.equal(secondCorrection.editExisting, true);
+
+    const explicitNew = classifySpaceIntent('新建一条线按正确卡片格式重新输出', history);
+    assert.equal(explicitNew.kind, 'line_widget');
+    assert.equal(explicitNew.editExisting, undefined);
+
+    const explanation = classifySpaceIntent('解释一下为什么卡片格式不对', history);
+    assert.equal(explanation.action, 'discuss');
+
+    const changedTarget = classifySpaceIntent('点卡格式不对，改成线卡重新输出', history);
+    assert.equal(changedTarget.kind, 'line_widget');
+    assert.equal(changedTarget.editExisting, undefined);
+
+    const ambiguousTarget = classifySpaceIntent('把点卡和线卡按正确格式重新输出', [
+        { role: 'assistant', content: '{"bad":true}', expectedWidgetKind: 'schedule_widget' },
+    ]);
+    assert.deepEqual([ambiguousTarget.action, ambiguousTarget.reason], ['clarify', 'ambiguous-widget-kind']);
+});
+
+test('间历史裁掉原用户消息后仍复用assistant保存的预期卡型', () => {
+    const intent = classifySpaceIntent('卡片格式还是不对', [
+        { role: 'assistant', content: '{"bad":true}', expectedWidgetKind: 'line_widget' },
+    ]);
+    assert.equal(intent.action, 'write');
+    assert.equal(intent.kind, 'line_widget');
+    assert.equal(intent.editExisting, undefined);
+});
+
+test('间角色卡人格模式限定普通文字聊天并保持顾问模式兼容', async () => {
+    const characterData = '群聊卡资料：用户操控的人物林澈；AI角色乔安沉稳，AI角色周言善于观察。';
+    const makeContext = (settings, counters = {}) => createSpaceContext({
+        context: () => ({ name1: '林澈', name2: '多人角色卡' }),
+        settings: () => settings,
+        readCharacterData: () => { counters.characterReads = (counters.characterReads || 0) + 1; return characterData; },
+        readMemory: async () => '', readRecent: async () => '',
+        readWorldInfo: async (_ctx, _message, _history, supplement) => { counters.titleSupplement = supplement; return ''; },
+    });
+
+    const defaultPrompt = await makeContext({ spacePersona: 'CUSTOM_ADVISOR_VOICE' })
+        .buildMessages({ target: {}, userMsg: '乔安，你怎么看这件事？', historySnapshot: [] });
+    assert.match(defaultPrompt[0].content, /故事外的创作顾问/);
+    assert.match(defaultPrompt[0].content, /CUSTOM_ADVISOR_VOICE/);
+    assert.doesNotMatch(defaultPrompt[0].content, /多人卡.*点名优先/);
+
+    const counters = {};
+    const activeSettings = { spacePersona: 'CUSTOM_ADVISOR_VOICE', spaceUseCharacterPersona: true };
+    const context = makeContext(activeSettings, counters);
+    const discussion = await context.buildMessages({ target: {}, userMsg: '乔安，你怎么看这件事？', historySnapshot: [] });
+    assert.equal(counters.characterReads, 1);
+    assert.equal(discussion[0].content.split(characterData).length - 1, 1);
+    assert.match(discussion[0].content, /角色卡人格模式】只借当前卡中AI人物的性格、说话习惯与思考方式作为聊天人格/);
+    assert.match(discussion[0].content, /直接用普通文字回答林澈（用户）/);
+    assert.match(discussion[0].content, /林澈是用户角色，不作为AI人格来源/);
+    assert.match(discussion[0].content, /多人卡按点名或话题选用AI人物口吻，可像普通群聊一样换人并以“人物名：”标明/);
+    assert.match(discussion[0].content, /普通聊天只写直接回复，不插入发言者的动作、神态描写或场景\/心理旁白/);
+    assert.match(discussion[0].content, /不演绎故事或身体互动/);
+    assert.match(discussion[0].content, /结构化卡片仍按本轮目标与原字段输出，不受上述聊天形式限制/);
+    assert.doesNotMatch(discussion[0].content, /你是当前角色卡中的AI角色/);
+    assert.doesNotMatch(discussion[0].content, /创作顾问|不扮演角色/);
+    assert.doesNotMatch(discussion[0].content, /CUSTOM_ADVISOR_VOICE/);
+    assert.doesNotMatch(counters.titleSupplement, /CUSTOM_ADVISOR_VOICE/);
+
+    for (const [userMsg, expectedKind, outputTag, field] of [
+        ['生成一个点卡', 'schedule_widget', '<schedule_widget>', /Event: type\|title\|description/],
+        ['生成一条线卡', 'line_widget', '<line_widget>', /Desc:.*Next:/s],
+        ['生成一个面方案', 'outline_widget', '<outline_widget>', /Scene: 场景描述/],
+    ]) {
+        const messages = await context.buildMessages({ target: {}, userMsg, historySnapshot: [] });
+        assert.equal(messages.expectedWidgetKind, expectedKind, userMsg);
+        assert.match(messages[0].content, new RegExp(outputTag.replace(/[<>]/g, '\\$&')), userMsg);
+        assert.match(messages[0].content, field, userMsg);
+        assert.match(messages[0].content, /结构化卡片仍按本轮目标与原字段输出，不受上述聊天形式限制/, userMsg);
+        assert.doesNotMatch(messages[0].content, /CUSTOM_ADVISOR_VOICE/, userMsg);
+    }
+    assert.equal(counters.characterReads, 4);
+
+    const semantic = await context.buildMessages({ target: {}, userMsg: '帮我处理一下这件事', historySnapshot: [] });
+    assert.equal(semantic.expectedWidgetKind, undefined);
+    assert.match(semantic[0].content, /本轮输出模式：语义路由/);
+    assert.match(semantic[0].content, /<schedule_widget>/);
+    assert.match(semantic[0].content, /<line_widget>/);
+    assert.match(semantic[0].content, /角色卡人格模式】只借当前卡中AI人物的性格、说话习惯与思考方式作为聊天人格/);
+    assert.doesNotMatch(semantic[0].content, /CUSTOM_ADVISOR_VOICE/);
+
+    activeSettings.spaceUseCharacterPersona = false;
+    const advisorAgain = await context.buildMessages({ target: {}, userMsg: '回到顾问方式', historySnapshot: [] });
+    assert.match(advisorAgain[0].content, /故事外的创作顾问/);
+    assert.match(advisorAgain[0].content, /CUSTOM_ADVISOR_VOICE/);
+    assert.match(counters.titleSupplement, /CUSTOM_ADVISOR_VOICE/);
+    assert.equal(counters.characterReads, 6);
+
+    const help = buildSpaceHelpText({});
+    assert.match(help, /提示词与标签.*间·人格 \/ 说话风格/);
+    assert.match(help, /默认使用顾问.*使用当前角色人设/);
+    assert.match(help, /自定义语气文本保留但暂停使用，关闭后恢复/);
 });

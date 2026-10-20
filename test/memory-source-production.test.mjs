@@ -5,6 +5,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { selectVisibleChatHistory } from '../business/lines/history.js';
+import { createQianQianJieMemoryAccess, QIANQIANJIE_BRIDGE_KEY } from '../business/memory/qianqianjie.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = fs.readFileSync(path.join(repo, 'index.js'), 'utf8');
@@ -20,6 +21,7 @@ const memorySetup = region('function createQianQianJieGenerationSnapshot(', 'fun
 const indexHistory = region('function buildRecentGenerationHistory(ctx, historyLimit, opts = {}) {', 'function outlineWorldInfoTriggerText(history) {');
 const buildMessagesRegion = region('async function buildMessages(ctx, prompt, userName, charName, historyLimit = 3, opts = {}) {', '// ─── Inject');
 const externalReadRegion = region('async function _getMemTextRaw(opts = {}) {', '// 记忆源先按各自的召回规则选材');
+const worldInfoContextRegion = region('async function buildWorldInfoContext(ctx, { triggerText', "// Read Anima's summary layer");
 
 function precheckHarness(result, { confirmed = true } = {}) {
     const titles = [];
@@ -36,7 +38,7 @@ function precheckHarness(result, { confirmed = true } = {}) {
     return { ...funcs, titles };
 }
 
-function buildHarness({ getMemText }) {
+function buildHarness({ getMemText, settings = { useDatabase: true, useAnima: false, useBaiBaiBook: false, useQianQianJie: false }, qianQianJieGenerationSnapshotCurrent = () => false }) {
     const historyBuilder = evaluate(indexHistory, 'buildGenerationHistoryContext', {
         getSettings: () => ({ keepTags: '', extraTags: '' }),
         selectVisibleChatHistory,
@@ -49,18 +51,66 @@ function buildHarness({ getMemText }) {
         buildGenerationHistoryContext: historyBuilder,
         buildWorldInfoContext: async () => '',
         readCardExtras: () => ({ personaDesc: '', authorNote: '' }),
-        getSettings: () => ({ useDatabase: true, useAnima: false, useBaiBaiBook: false, useQianQianJie: false, keepTags: '', extraTags: '' }),
+        getSettings: () => ({ ...settings, keepTags: '', extraTags: '' }),
         getAlmanacInjectText: () => '', resolveAlmanacContextText: () => '', getCalDescInjectText: () => '',
         sanitizeGenerationContextText: value => String(value ?? ''),
         isConfirmedMemoryFallback: snapshot => snapshot?.status === 'fallback-confirmed'
             && ['database', 'anima', 'bai-bai-book'].includes(snapshot.source),
         isMemoryReadSnapshot: snapshot => snapshot?.status === 'read-required'
             && ['database', 'anima', 'bai-bai-book'].includes(snapshot.source),
-        qianQianJieGenerationSnapshotCurrent: () => false,
+        qianQianJieGenerationSnapshotCurrent,
         makeDiagnosticError: () => stale,
         getMemText,
     });
 }
+
+test('QQJ prequel and recall from the production snapshot reach the final shared message once without a second read', async () => {
+    const ctx = { chatId: 'chat-a', characters: [{ avatar: 'character-a.png' }], characterId: 0, userAvatar: 'persona-a.png', chat: [] };
+    const participant = { chatId: 'chat-a', characterId: 0, characterKey: 'character-a.png', personaKey: 'persona-a.png', userName: '用户', charName: '角色' };
+    const hostIdentity = { hostChatId: 'chat-a', characterLocator: 'character-a.png', personaLocator: 'persona-a.png' };
+    const promptParts = {
+        prequel: '【用户导入的过去经历资料】\n可信前情边界\n【前情片段 1】过去经历内容',
+        recall: '<qqj_recalled_context>\n当前召回内容\n</qqj_recalled_context>',
+    };
+    let snapshotReads = 0;
+    const bridge = {
+        schemaVersion: 1, kind: 'qqj-public-memory-bridge',
+        getPromptSnapshot() {
+            snapshotReads++;
+            return { status: 'ready', identity: hostIdentity, prequel: { text: promptParts.prequel }, recall: { text: promptParts.recall } };
+        },
+    };
+    const access = createQianQianJieMemoryAccess({
+        globalRef: { [QIANQIANJIE_BRIDGE_KEY]: bridge }, contextProvider: () => ctx,
+        participantIdentityProvider: () => participant, isSelected: () => true,
+        writeCache: () => ({ ok: true, commitState: 'confirmed' }),
+    });
+    const titles = [];
+    const productionPrecheck = evaluate(memorySetup, '({ memoryPreCheckConfirm, qianQianJieGenerationSnapshotCurrent })', {
+        QQJ_MEMORY_SNAPSHOT_VERSION: 1, memorySourceEpoch: 1,
+        getSettings: () => ({ useQianQianJie: true }), getContext: () => ctx,
+        captureParticipantIdentity: () => participant, sameParticipantIdentity: () => true,
+        captureQianQianJieHostIdentity: () => hostIdentity, sameQianQianJieHostIdentity: () => true,
+        qianQianJieMemoryAccess: access, qianQianJieMemoryDiagnostic: () => '记忆读取失败',
+        spConfirm: async options => { titles.push(options.title); return true; },
+    });
+    const operationToken = Symbol('generation');
+    const preflight = await productionPrecheck.memoryPreCheckConfirm({ operationToken, contextSnapshot: ctx, participantIdentity: participant });
+    assert.equal(preflight.proceed, true);
+    assert.deepEqual(titles, [], 'usable prequel/recall does not open the empty-material confirmation');
+    assert.equal(snapshotReads, 1);
+
+    const build = buildHarness({
+        getMemText: async () => { throw new Error('preflight snapshot must prevent a second memory read'); },
+        settings: { useQianQianJie: true },
+        qianQianJieGenerationSnapshotCurrent: productionPrecheck.qianQianJieGenerationSnapshotCurrent,
+    });
+    const messages = await build(ctx, '继续创作', '用户', '角色', 3, { memoryOperationToken: operationToken, memorySnapshot: preflight.memorySnapshot });
+    const finalInput = messages.map(message => message.content).join('\n');
+    assert.equal(finalInput.split(promptParts.prequel).length - 1, 1);
+    assert.equal(finalInput.split(promptParts.recall).length - 1, 1);
+    assert.equal(snapshotReads, 1, 'final input uses the already-read preflight snapshot');
+});
 
 test('database preflight distinguishes confirmed empty fallback from ready-then-read failure', async () => {
     const emptyRead = precheckHarness({ status: 'no-match', text: '' });
@@ -170,6 +220,56 @@ test('worldbook read exceptions are reported while successful books remain injec
     assert.match(notices[0], /有世界书未能读取/);
     assert.match(notices[0], /本次材料可能不完整/);
     assert.doesNotMatch(notices[0], /已读取的书仍会参与生成/);
+});
+
+test('worldbook query without a trusted person roster keeps the original query', async () => {
+    const runQuery = ({ names = [], recognized = true, failRead = false } = {}) => {
+        const activations = [];
+        const notices = [];
+        const build = evaluate(worldInfoContextRegion, 'buildWorldInfoContext', {
+            WORLD_INFO_ALL_ROLES: /(?:全部角色|所有人物)/u,
+            WORLD_INFO_GROUP_INFO_TOPIC: /(?:背景|人设)/u,
+            WORLD_INFO_SCAN_BUDGET: 100,
+            getCharBookEntries: async () => {
+                if (failRead) throw new Error('worldbook-read-failed');
+                return [];
+            },
+            getWiExcludeSet: () => new Set(), hasWiExcluded: () => false,
+            ensureCurrentWiSelection: () => ({}), worldInfoSelectionAllows: () => true,
+            resolveWorldInfoGroupReference: () => ({ recognized, names }),
+            worldInfoReferenceTriggerText: (query, roster) => `${query} ${roster.join(' ')}`,
+            showToast: (...args) => notices.push(args),
+            safeDiagnosticLog: () => ({}), console: { warn() {}, info() {} },
+            worldInfoCandidateKey: (world, uid) => `${world}::${uid}`,
+            resolveWorldInfoActivation: async (_ctx, coreChat, options) => {
+                activations.push({ coreChat, options });
+                return { failed: false, keys: new Set() };
+            },
+            worldInfoCore: { world_info_budget_cap: 0, world_info_budget: 100 },
+            countWorldInfoTokens: async text => ({ tokens: Math.ceil(String(text).length / 4) }),
+            worldInfoTitleMatches: () => false, worldInfoTitleSupplementAllows: () => false,
+            worldInfoPersonTitleMatches: () => false, estimateWorldInfoTokens: () => ({ tokens: 0, exact: true }),
+            notifyWorldInfoActivationFailure() {},
+        });
+        return { build, activations, notices };
+    };
+    const query = async (text, options = {}) => {
+        const harness = runQuery(options);
+        await harness.build({}, { triggerText: text, triggerMode: 'query', referenceHistory: [] });
+        assert.equal(harness.notices.length, 0);
+        assert.equal(harness.activations.length, 1);
+        return harness.activations[0].coreChat[0].mes;
+    };
+
+    const request = '把他们的背景写进面大纲，张三和李四';
+    assert.equal(await query(request), request);
+    assert.equal(await query('全部角色的背景是什么'), '全部角色的背景是什么');
+    assert.equal(await query('这五个的背景是什么'), '这五个的背景是什么');
+    assert.equal(await query('他们的背景是什么', { names: ['陆飞星', '林薇'] }), '他们的背景是什么 陆飞星 林薇');
+    assert.equal(await query('他们呢', { recognized: false }), '他们呢');
+
+    const failed = runQuery({ failRead: true });
+    await assert.rejects(failed.build({}, { triggerText: request, triggerMode: 'query', referenceHistory: [] }), /worldbook-read-failed/);
 });
 
 test('世界书设置列表在全失败或部分失败时提示异常，并保留本次成功条目', async () => {

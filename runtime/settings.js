@@ -91,7 +91,8 @@ export const DEFAULT_SETTINGS = {
     keepTags       : '',   // 保活块：剥掉标签标记、内部内容原样保留（内部不再二次清洗）；keep 块之外的一切（其余标签块+裸文本）剔除——M2/M3
     extraTags      : '',   // 强制删除这些标签块及内容（可穿透 keep 内部，恒优先于 keep）——M1/M3
     customPrompt   : '',         // 创作链自定义写作规范；机械链只使用统一基础处理层
-    spacePersona   : '',         // 间·人格覆盖：空=用内置默认语气（ADVISOR_TONE_GUIDE）；非空=换间的语气/行文/人格（顾问身份恒保留、不可覆盖）
+    spacePersona   : '',         // 间·顾问模式下的人格语气覆盖；角色卡人格模式开启时保留此文本但本轮不使用
+    spaceUseCharacterPersona: false, // 间·用当前卡AI人物的性格口吻作为聊天人格；缺省保持旧版顾问模式
     // 棱（小剧场）
     theaterStylePrompt   : '',   // 写作 agent 文风提示词
     theaterBeautifyPrompt: '',   // 美化 agent 提示词（空=用内置默认）

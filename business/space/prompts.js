@@ -1,4 +1,5 @@
 import { narrativePaceContract, narrativePreferenceContract } from '../narrative-preferences.js';
+import { LINE_OUTPUT_REVIEW_GUIDE, LINE_RELATIONSHIP_AGENCY_GUIDE } from '../lines/prompt.js';
 import { normalizeLedgerInterval } from '../ledger/settings.js';
 
 export function getSpaceChatPlaceholder() {
@@ -54,8 +55,11 @@ function widgetContract(kind, calDescText, preferences = {}) {
         `- agency=player 仅当下一步必须等待 user 的选择或行动；agency=world 表示其他人物、势力、机构或环境即使 user 暂不参与也能自行推进。不得因为事件将来可能影响 user 就标 player。`,
         `- stall 只能是 true / false。stall=true 时 Next 写恢复条件；否则 Next 写有依据的下一变化。`,
         `- pin 是本地保留位，一律输出 false。`,
+        `- 以下人物自主与复核约束仅在线卡是本轮选定输出时适用。`,
+        LINE_RELATIONSHIP_AGENCY_GUIDE,
         narrativePreferenceContract(preferences),
         narrativePaceContract(preferences.narrativePace),
+        LINE_OUTPUT_REVIEW_GUIDE,
     ].join('\n');
     if (kind === 'almanac_widget') return [
         `【历卡片理想结构】轴（历）卡片就是记录具体日期／重要日期的卡片；一次多个日期可写多行 Item，不寒暄、不解释：`,
@@ -90,6 +94,12 @@ function outputModeBlock(intent = {}, calDescText = '', preferences = {}, reques
         if (intent.reason === 'missing-widget-kind') {
             return `【本轮输出模式】用户希望看到应用按钮，但没有说明要应用到哪个模块。请简短询问目标是点、线、轴日期、历法还是面；在目标明确前不要生成卡片。`;
         }
+        if (intent.reason === 'missing-format-widget-kind') {
+            return `【本轮输出模式】用户在纠正卡片格式，但当前历史没有可确认的目标卡型。请只简短询问要重发点、线、轴日期、历法还是面；不要要求用户提供内部模板，也不要猜类型或输出卡片。`;
+        }
+        if (intent.reason === 'missing-source-widget') {
+            return `【本轮输出模式】用户指定了要转换的原卡类型，但当前可用历史里没有该类型的卡片。请简短请用户提供那张卡的内容；不要改用其他类型的卡片，也不要猜测原内容。`;
+        }
         return `【本轮输出模式】本轮同时指向多种卡片，意图有歧义。请用自然语言简短追问用户这次只要哪一种；不要猜测，不要同时输出多种卡片。`;
     }
     if (intent.action === 'semantic-route') {
@@ -109,7 +119,7 @@ function outputModeBlock(intent = {}, calDescText = '', preferences = {}, reques
     if (!intent.kind) {
         return `【本轮输出模式】这是普通讨论或只读查询。只用自然语言回答，不生成结构化卡片，不输出无关标签。`;
     }
-    return `【本轮输出模式】用户要求生成或修改${widgetLabel(intent.kind)}卡片。只输出下面这一种完整候选，不输出其他种类、无关标签、前言或解释；候选尚未应用，等待用户选择应用。用户明确要多条候选时，可逐张输出同一种卡片。\n${widgetContract(intent.kind, calDescText, preferences)}`;
+    return `【本轮输出模式】用户要求${intent.formatRepair ? '按正确格式重新输出' : '生成或修改'}${widgetLabel(intent.kind)}卡片。只输出下面这一种完整候选，不输出其他种类、无关标签、前言或解释；候选尚未应用，等待用户选择应用。用户明确要多条候选时，可逐张输出同一种卡片。${intent.formatRepair ? '不要沿用历史里的错误格式，也不要要求用户提供内部模板。' : ''}\n${widgetContract(intent.kind, calDescText, preferences)}`;
 }
 
 function recentWidgetBlock(intent = {}) {
@@ -136,18 +146,29 @@ function recentWidgetBlock(intent = {}) {
     ].filter(Boolean).join('\n');
 }
 
-export function buildSpaceChatSystemPrompt({ userName, charName, personaDesc = '', characterData = '', authorNote = '', storyDate = '', materialText = '', requestedMaterials = {}, outlineRaw = '', wiContext = '', memText = '', recentCtx = '', pointList = '', lineList = '', ledgerList = '', almanacText = '', calDescText = '', faqText = '', personaOverride = '', preferences = {}, lineDirection = 'natural', intent = {} }) {
+function sourceWidgetBlock(intent = {}) {
+    const widget = intent.action === 'write' ? intent.sourceWidget : null;
+    if (!widget) return '';
+    return [
+        `【旧${widgetLabel(widget.kind)}卡片正文·仅作本轮转换素材】`,
+        widget.body,
+        `只提取与本轮目标有关的内容，忽略旧卡类型、字段和编号；本轮只输出${widgetLabel(intent.kind)}卡片合同。`,
+    ].join('\n');
+}
+
+export function buildSpaceChatSystemPrompt({ userName, charName, personaDesc = '', characterData = '', authorNote = '', storyDate = '', materialText = '', requestedMaterials = {}, outlineRaw = '', wiContext = '', memText = '', recentCtx = '', pointList = '', lineList = '', ledgerList = '', almanacText = '', calDescText = '', faqText = '', personaOverride = '', useCharacterPersona = false, preferences = {}, lineDirection = 'natural', intent = {} }) {
     const activePreferences = { ...preferences, direction: preferences.direction || lineDirection };
-    // 人格覆盖只替换顾问的语气层；创作顾问身份、不推进剧情和不扮演角色的合同始终保留。
-    // 空白使用内置语气，有值则完整替换内置语气而非追加。
-    const ov = String(personaOverride || '').trim();
-    const toneBlock = ov
+    // 两种人格来源互斥；角色卡模式不附加顾问自定义语气。
+    const ov = useCharacterPersona ? '' : String(personaOverride || '').trim();
+    const toneBlock = useCharacterPersona ? '' : ov
         ? `\n【人格语气】以下只调整表达方式，不改变创作顾问身份、输出模式或卡片要求：\n${ov}\n不要模仿正文里的状态栏、面板、属性框或分隔线。`
         : ADVISOR_TONE_GUIDE;
-    const pointEditMode = !!pointList && (intent.kind === 'schedule_widget' || intent.action === 'semantic-route');
-    const lineEditMode = !!lineList && (intent.kind === 'line_widget' || intent.action === 'semantic-route');
+    const pointEditMode = !!pointList && intent.kind === 'schedule_widget' && intent.editExisting === true;
+    const lineEditMode = !!lineList && intent.kind === 'line_widget' && intent.editExisting === true;
     const parts = [
-        `你是 ${userName} 与 ${charName} 故事外的创作顾问；直接回答、先给结论、按需展开，不扮演角色或替故事推进。`,
+        useCharacterPersona
+            ? `【角色卡人格模式】只借当前卡中AI人物的性格、说话习惯与思考方式作为聊天人格，直接用普通文字回答${userName}（用户）；${userName}是用户角色，不作为AI人格来源，也不替其发言或决定。多人卡按点名或话题选用AI人物口吻，可像普通群聊一样换人并以“人物名：”标明，不强制全员。普通聊天只写直接回复，不插入发言者的动作、神态描写或场景/心理旁白，不演绎故事或身体互动。历史剧情只用于理解，不续写主线。结构化卡片仍按本轮目标与原字段输出，不受上述聊天形式限制。`
+            : `你是 ${userName} 与 ${charName} 故事外的创作顾问；直接回答、先给结论、按需展开，不扮演角色或替故事推进。`,
         personaDesc ? `\n【${userName} 的人物设定】\n${personaDesc}` : '',
         characterData ? `\n【当前角色卡资料】\n${characterData}` : '',
         authorNote  ? `\n【作者注释（当前聊天）】\n${authorNote}` : '',
@@ -168,6 +189,7 @@ export function buildSpaceChatSystemPrompt({ userName, charName, personaDesc = '
             ? `【本轮输出模式】用户要求处理今日菜单，但菜单不属于可应用方案。请自然讨论菜单或给出建议，并提示用户可从下方模块入口打开菜单；不要因此强行生成任何点、线、轴日期、历法或面方案，也不要声称已保存。若用户明确要求把菜单事项做成点卡，则按点卡合同输出。`
             : outputModeBlock(intent, calDescText, activePreferences, requestedMaterials),
         recentWidgetBlock(intent),
+        sourceWidgetBlock(intent),
 
         (pointEditMode || lineEditMode) ? `\n【改现有条目】若用户要改的是上面当前列表里的某条已存在条目：` : '',
         pointEditMode ? `- 不要新增；点卡片必须同时写人物归属与组内序号：我的点用 <schedule_widget view="user" edit="3">…</schedule_widget>；TA 的点用该人物分组标题给出的 view / char，例如 <schedule_widget view="char" char="Alice" edit="3">…</schedule_widget>。` : '',
@@ -190,7 +212,7 @@ export const SPACE_HELP_FACTS = `【构画·功能与设置速查（你据此回
 · 【刻度】分持续状态／约定待办／周期。自动标注开关在设置→注入与内容设置→功能与内容开关，名称就是「刻度」，默认关；节奏在设置→推进设置→刻度。标注、更新间隔各设为 0 可分别关闭对应自动任务，两者都为 0 即完全手动，手动操作仍可用。也可在轴的刻度页或楼内「标注池」点「标注」捞新条、点「更新」按时间刷新现状。刻度潜伏注入默认关，需总闸和设置→注入与内容设置→模块注入里的刻度「潜伏注入主楼 AI」同时开启。每条可编辑（保存后自动用户锁）、锁定（AI 更新不再改）、暂停埋入（不注入但继续跟进）、了结（移到归档）；归档可捞回或彻底删除。锁定与注入是两回事：锁定不代表必定注入，暂停埋入则一定不注入。
 · 【线】有「平行事件」「冷知识」两页。平行事件追踪仍在发展的伏笔、人物行动和局势；冷知识开关在设置→注入与内容设置→功能与内容开关，名称是「冷知识」，默认关闭，开启后才参与生成和楼内显示。线的推进策略在设置→推进设置→线：可按 AI 回复回合数、故事日期变化或只手动推进。刷新「重新生成」只重做未锁线；「推进」会更新旧线，也可能新增少量真正独立的事件。每条 ⋮ 菜单含编辑／锁定／注入／删除；AI 不能替用户创建锁。潜伏注入要同时开总闸和设置→模块注入里线的「潜伏注入主楼 AI」。
 · 【面】「面」只显示一份正式大纲；［重新生成］会直接替换整份。想先讨论或修改草稿，请去「间」说明要一整版面；间回复含有效完整面方案时会出现「应用到面」，点击才替换正式稿并回到第 1 个节点。没点击时正式稿不变。节点菜单含编辑／设为当前／注入／复制／删除。面的推进只向后，不会自动倒退；潜伏注入需总闸、面自己的「大纲自动注入」和已设当前节点。
-· 【间】可先普通讨论；若要落地，请明确目标和新增／修改内容，请 AI 整理成可应用方案。有效方案才显示对应按钮，点击后才写模块；普通讨论、目标不清或方案不完整时没有可用按钮。自然语言例子：「把刚才的思路整理成可应用到面的方案」，不是固定口令。面方案点击会替换正式面整稿并从第 1 节点开始。间不写入正式角色扮演楼层，也不直接推进剧情。发送新问题时会先清理较旧记录；一轮完整问答结束后，最多可能暂时显示 21 条间内消息。纸飞机发送、扫帚清空；用户消息可用笔「编辑并重发」（会从这里截断后续记录），消息还可复制或删除。复制只包含该条消息的普通文字，结构化卡片不会随消息一起复制。结构化卡片落地规则：新点应用前选择人物，追加到“未来”且不自动锁；改点替换指定条；新线追加后自动锁，改已有线保留原锁态；轴日期去重追加并自动锁；「应用历法」整套更换月份／天数／纪年，并按上面的冲突流程确认。刻度、冷知识、菜单、棱、坐标与记忆没有间内应用卡，请在对应模块使用；菜单从点页餐具入口打开。
+· 【间】可先普通讨论；若要落地，请明确目标和新增／修改内容，请 AI 整理成可应用方案。有效方案才显示对应按钮，点击后才写模块；普通讨论、目标不清或方案不完整时没有可用按钮。自然语言例子：「把刚才的思路整理成可应用到面的方案」，不是固定口令。面方案点击会替换正式面整稿并从第 1 节点开始。间不写入正式角色扮演楼层，也不直接推进剧情。设置→通用设置→提示词与标签→「间·人格 / 说话风格」可切换人格来源；默认使用顾问，勾选「使用当前角色人设」后以AI人物性格、说话习惯和思考方式作为普通文字聊天人格。用户角色不作为人格来源；聊天只写直接回复，不插入发言者动作、神态描写或场景/心理旁白，不演绎故事或身体互动。多人卡按点名或话题选择AI人物口吻，可标名换人。顾问自定义语气文本保留但暂停使用，关闭后恢复。发送新问题时会先清理较旧记录；一轮完整问答结束后，最多可能暂时显示 21 条间内消息。纸飞机发送、扫帚清空；用户消息可用笔「编辑并重发」（会从这里截断后续记录），消息还可复制或删除。复制只包含该条消息的普通文字，结构化卡片不会随消息一起复制。结构化卡片落地规则：新点应用前选择人物，追加到“未来”且不自动锁；改点替换指定条；新线追加后自动锁，改已有线保留原锁态；轴日期去重追加并自动锁；「应用历法」整套更换月份／天数／纪年，并按上面的冲突流程确认。刻度、冷知识、菜单、棱、坐标与记忆没有间内应用卡，请在对应模块使用；菜单从点页餐具入口打开。
 · 【棱】生成不进入正式楼层的独立小剧场／番外。可直接填要求，也可选模板；模板库在设置→数据设置→小剧场模板库。洗牌图标「随机」只把一个模板填进输入区，用户确认或修改后仍需点「生成小剧场」，绝不是直接生成。生成后可查看本次模板内容、改标题、重新生成、永久保存和全屏浏览。草稿最多 10 条，新稿挤掉最旧草稿；永久保存留在本对话，列表可查看或删除。
 · 【坐标】是 AI 楼层正文收藏副本，不是完整样式快照。入口开关在设置→通用设置→显示与通知管理→「收藏此楼入口」；只出现在 AI 楼。点楼层上的坐标形图标收藏，收藏后选择标签；再点同一图标取消。坐标页按角色→聊天→楼层分组，可筛选／管理标签和全屏查看。删除收藏只删副本，不影响原楼。
 · 【楼内显示与通知】设置→通用设置→显示与通知管理：「楼内渲染框」是主开关，子开关分别控制点／线／轴／标注池／召回，主开关关时子开关都不生效；「收藏此楼入口」只控制坐标按钮。界面字号用 −／＋ 调整，独立于酒馆字号。通知档位为关／简约／全量。`;
