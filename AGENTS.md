@@ -10,7 +10,7 @@
 
 ## 1. 同步与版本惯例
 
-1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.9.0moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
+1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.9.4moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
 2. **分支与合并安全策略**：合并前先建备份分支 `git branch backup/master-before-upstream-vX.Y.Z master` → 在 `master` 执行 `git merge --no-ff upstream/master`（先以 `git merge-tree --write-tree master upstream/master` 预判，实际冲突应与预判一致）→ 裁决（§2）→ 四道门禁（§5）→ AGENTS.md 索引表追加记录 → push origin；验证完全通过前严禁向远程 force push。**备份分支仅在本地存在，合并验证通过并推送后即可清理**（`git branch -d`，其尖端已是 master 历史内的祖先提交，即合并提交的第一父状态，删除零损失）。
 
 ---
@@ -82,7 +82,7 @@
    ```bash
    node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：除已知沙箱伪红外全绿。`runtime/store-local-applied.test.js` 中 1 例 spawn 用例在沙箱内恒红（纯上游树同样红，非合并引入），真实终端下应为 pass/skip。v3.9.4 合并当期实测 **355 tests / 353 pass / 1 fail(沙箱 EPERM) / 1 skip**，以 §6.1 最近一行记录为准。
+   *标准*：除已知跳过项外全绿，2026-10-24 实测 **373 tests / 372 pass / 0 fail / 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。`b3da109` 合并当期基线为 355/353/1 fail(EPERM)/1 skip，差异来自此后新增的 18 条同名嵌套包裹符用例与预检断言对齐。
    > **上游自带测试导入裸运行时**：上游 v3.9.1 新增的 `test/tag-sanitizer.test.mjs` 直接 `import '../memory.js'`，而 `memory.js` 顶部导入 SillyTavern 运行时（`../../../extensions.js`、`../../../../script.js`），裸检出下 `ERR_MODULE_NOT_FOUND`（纯上游树同样挂）。本地改为直连 `../runtime/tag-sanitizer.js`——`memory.js` 的 `stripTags` 本就是对该模块的纯 re-export，语义等价，且使测试在本环境可运行。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
@@ -90,7 +90,7 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v3.9.4**（上游提交 `24ba8d2`），本次合并提交 `b3da109`；备份分支 `backup/pre-v3.9.4` 保留至推送完成；v3.9.1~v3.9.4 主要变更：空间路由与草稿清理重构（`business/space/context.js` +73 行）、新增命名中括号包裹规则 `[name]...[/name]`（`utils/tag-names.js` 的 `PAIRED_BRACKET_RULE_RE`，含 lower 归一与大小写不敏感定界符匹配）、书签精简与台词提示校准（`business/lines/*`、`business/coordinate/feature.js`）、千千结前情提要重新计入材料（`business/memory/qianqianjie.js` 的 `joinPromptSections(prequelText, recallText)`）、新增手机/轴模块（`business/axis/phone.js`）；
+- **当前分支**：`master`；已合入上游 **v3.9.4**（上游提交 `24ba8d2`），本次合并提交 `b3da109`，整改提交 `b0863c1`；备份分支 `backup/pre-v3.9.4` 已随推送完成清理；v3.9.1~v3.9.4 主要变更：空间路由与草稿清理重构（`business/space/context.js` +73 行）、新增命名中括号包裹规则 `[name]...[/name]`（`utils/tag-names.js` 的 `PAIRED_BRACKET_RULE_RE`，含 lower 归一与大小写不敏感定界符匹配）、书签精简与台词提示校准（`business/lines/*`、`business/coordinate/feature.js`）、千千结前情提要重新计入材料（`business/memory/qianqianjie.js` 的 `joinPromptSections(prequelText, recallText)`）、新增手机/轴模块（`business/axis/phone.js`）；
 - **当前版本**：`manifest.json` 版本号 **`3.9.4moon`**；
 - **最近提交历史**（更早见 `git log`）：
   - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
