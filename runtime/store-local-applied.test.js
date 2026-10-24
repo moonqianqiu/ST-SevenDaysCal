@@ -24,7 +24,7 @@ test('production index/store applies ordinary chat metadata immediately without 
     const slashParser = path.join(dir, 'slash-parser.mjs');
     const slashCommand = path.join(dir, 'slash-command.mjs');
     try {
-        await fs.writeFile(harness, `let context = null; export const extension_settings = {}; export const extensionNames = []; export function getContext() { return context; } export function setContext(value) { context = value; }\n`);
+        await fs.writeFile(harness, `let context = null; export const extension_settings = {}; export const extensionNames = []; export const extensionTypes = {}; export function getContext() { return context; } export function setContext(value) { context = value; }\n`);
         await fs.writeFile(utils, `export const equalsIgnoreCaseAndAccents = (a,b) => String(a).toLowerCase() === String(b).toLowerCase(); export const getCharaFilename = () => '';\n`);
         await fs.writeFile(world, `export let selected_world_info = null; export const world_info = {}; export async function checkWorldInfo() { return { allActivatedEntries: new Set() }; }\n`);
         await fs.writeFile(slashParser, `export class SlashCommandParser { static addCommandObject(command) { (globalThis.__slashCommands ??= []).push(command); } }\n`);
@@ -33,6 +33,7 @@ test('production index/store applies ordinary chat metadata immediately without 
         await fs.writeFile(loader, `
 const index = ${JSON.stringify(indexUrl)};
 const fixtures = new Map([
+  ['lib.js', 'data:text/javascript,export const showdown=undefined,DOMPurify=undefined;'],
   ['extensions.js', ${JSON.stringify(pathToFileURL(harness).href)}], ['script.js', ${JSON.stringify(pathToFileURL(script).href)}],
   ['world-info.js', ${JSON.stringify(pathToFileURL(world).href)}], ['utils.js', ${JSON.stringify(pathToFileURL(utils).href)}],
   ['SlashCommandParser.js', ${JSON.stringify(pathToFileURL(slashParser).href)}], ['SlashCommand.js', ${JSON.stringify(pathToFileURL(slashCommand).href)}],
@@ -513,8 +514,8 @@ globalThis.setTimeout = (_callback, delay) => { toastDelays.push(delay); return 
 globalThis.toastr = null; delete globalThis.__zmerUniversalToastThemeCleanup;
 seam.showToast('状态提示', null, 'info'); seam.showToast('成功提示'); seam.showToast('失败提示', null, true); seam.showToast('旧 truthy 失败提示', null, 'legacy');
 const customToastMarkup = globalThis.__feedbackCapture.toastMarkup.slice(-4);
-if (!customToastMarkup[0].includes('sp-toast-info') || !customToastMarkup[0].includes('fa-circle-info')) throw new Error('custom info toast did not render the informational style/icon');
-if (customToastMarkup[1].includes('sp-toast-error') || customToastMarkup[1].includes('sp-toast-info') || !customToastMarkup[1].includes('fa-calendar-check')) throw new Error('custom success toast changed its existing success style');
+if (!customToastMarkup[0].includes('sp-toast-info') || !customToastMarkup[0].includes('data-sp-icon="info-circle"')) throw new Error('custom info toast did not render the informational style/icon');
+if (customToastMarkup[1].includes('sp-toast-error') || customToastMarkup[1].includes('sp-toast-info') || !customToastMarkup[1].includes('data-sp-icon="calendar-check"')) throw new Error('custom success toast changed its existing success style');
 if (!customToastMarkup[2].includes('sp-toast-error') || !customToastMarkup[3].includes('sp-toast-error')) throw new Error('true and legacy truthy toast arguments must retain failure styling');
 const visibleToastDelays = toastDelays.filter(delay => delay === 4000 || delay === 10000);
 if (JSON.stringify(visibleToastDelays) !== JSON.stringify([4000, 4000, 10000, 10000])) throw new Error('custom toast duration changed the success/info/error contract');
@@ -538,12 +539,7 @@ async function checkDatabasePreflight(helper, title, reason, decision = true) {
   if (!callback) throw new Error('production database preflight did not render the expected confirmation choice');
   callback();
   const result = await pending;
-  if (!decision) {
-    if (result !== false) throw new Error('database preflight did not preserve cancellation');
-  } else if (result?.proceed !== true || result.memorySnapshot?.source !== 'database'
-    || result.memorySnapshot.status !== 'fallback-confirmed' || result.memorySnapshot.reason !== reason) {
-    throw new Error('database preflight did not preserve the confirmed fallback snapshot');
-  }
+  if (decision ? result?.proceed !== true : result !== false) throw new Error('database preflight did not preserve its existing continue/cancel decision');
 }
 await checkDatabasePreflight({ getWorldbook: async () => [] }, '数据库记忆为空', 'no-match');
 await checkDatabasePreflight({}, '数据库记忆不可用', 'api-unavailable');

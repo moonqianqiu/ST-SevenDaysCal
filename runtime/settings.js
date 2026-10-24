@@ -1,3 +1,5 @@
+import { getSharedBodyWrappers } from '../utils/shared-body-wrappers.js';
+import { normalizeTagRules } from '../utils/tag-names.js';
 // runtime/settings.js — 设置数据读写、功能开关与 API 预设。
 import { extension_settings } from '../../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../../script.js';
@@ -107,6 +109,18 @@ export const DEFAULT_SETTINGS = {
     quickReplyShortcutKeys: [],
 };
 
+export const getWrapperSettings = () => getSharedBodyWrappers(extension_settings);
+// 写入用本仓 normalizeTagRules（包裹规则原样保留、大小写敏感，AGENTS §2.1）：
+// updateSharedBodyWrappers 会按上游规则 lower 归一命名对，经它写回会破坏本仓合同。
+// 共享容器本身照用——上游插件读取时各自再归一化，双向兼容。
+export const updateWrapperSettings = patch => {
+    const wrappers = getWrapperSettings();
+    for (const key of ['keepTags', 'extraTags']) if (Object.hasOwn(patch ?? {}, key)) {
+        wrappers[key] = normalizeTagRules(patch[key]).join(',');
+    }
+    return wrappers;
+};
+
 export function getSettings() {
     const s = extension_settings[PLUGIN_ID] ??= { ...DEFAULT_SETTINGS };
     // 老用户的设置段可能缺后加字段（如 customPrompt）：逐一补默认值，只补缺失、不覆盖已有值。
@@ -117,6 +131,9 @@ export function getSettings() {
     if (s.characterExcludeAvatars === DEFAULT_SETTINGS.characterExcludeAvatars) s.characterExcludeAvatars = [];
     if (s.quickReplyShortcutKeys === DEFAULT_SETTINGS.quickReplyShortcutKeys) s.quickReplyShortcutKeys = [];
     if (!Array.isArray(s.quickReplyShortcutKeys)) s.quickReplyShortcutKeys = [];
+    // 共享容器初始化必须在本地默认值（keepTags:''）回填之后：全新安装时 shared-body-wrappers
+    // 的 merge 只认已存在的键，先初始化会落到上游回退值 'content' 而丢失 M0 直通默认。
+    getWrapperSettings();
     return s;
 }
 

@@ -12,6 +12,7 @@ import { normalizeTagRules } from '../utils/tag-names.js';
 import { stripTags } from '../runtime/tag-sanitizer.js';
 import { selectVisibleChatHistory } from '../business/lines/history.js';
 import { sanitizeGenerationContextText } from '../runtime/generation-context.js';
+import { getSharedBodyWrappers } from '../utils/shared-body-wrappers.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const indexSource = fs.readFileSync(path.join(repo, 'index.js'), 'utf8');
@@ -32,6 +33,7 @@ test('paired named wrappers are kept verbatim as literal wrapper rules', () => {
     ]);
     assert.deepEqual(normalizeTagRules('[draft]..[/draft], ...abc, abc..., a...b...c'), []);
     assert.deepEqual(normalizeTagRules('{{...}},<<...>>,[a.b]...[/a.b]'), ['{{...}}', '<<...>>', '[a.b]...[/a.b]']);
+    assert.deepEqual(normalizeTagRules('[draft]..[/draft], [draft]... [ /draft], [a.b]...[/a.b]'), ['[draft]... [ /draft]', '[a.b]...[/a.b]']);
 });
 
 test('configured paired wrappers remove complete multiline blocks including kept content', () => {
@@ -83,20 +85,36 @@ test('paired wrapper rule keeps legacy XML rescue and double bracket contracts',
     assert.equal(stripTags('前[[噪音<content>救回</content>]]后', {
         keepTags: 'content', extraTags: '[[...]]',
     }), '');
+    // 上游 v3.9.5 起新增「HTML 注释对作包裹定界符」能力；本仓合同中注释属 M0 卫生清理
+    // （始终剥除、不充当定界符，与 MK 跨仓一致），故该形态只清注释、内容原样保留
+    // （<content> 未配置不动）。如需支持注释定界符须两仓同步改 M0 合同，不在合并中顺手改。
+    assert.equal(stripTags('前<!--draft-->草稿<content>不可救回</content><!--/draft-->后', {
+        extraTags: '<!--draft-->...<!--/draft-->',
+    }), '前草稿<content>不可救回</content>后');
 });
 
 test('settings input and change persist normalized wrapper syntax and refill the field', () => {
     const region = productionRegion('function sanitizeTagList(raw) {', "$in('#sp-custom-prompt')");
     const handlers = {};
-    const settings = { extraTags: '' };
+    // 生产 getSettings() 会先物化本地默认（keepTags:''）再初始化共享容器（AGENTS §3.3）；
+    // 夹具必须呈现同一时序，否则共享容器会落到上游回退值 'content'。
+    const extensionSettings = { 'schedule-planner': { keepTags: '', extraTags: '' } };
+    const settings = getSharedBodyWrappers(extensionSettings);
     let saves = 0;
     const input = {
         on: (event, handler) => { handlers[`#sp-mem-extratags:${event}`] = handler; return input; },
     };
     const bind = vm.runInNewContext(`${region}\nbindTagField`, {
         $in: () => input,
-        getSettings: () => settings,
+        // 与生产 runtime/settings.js 同语义：写入用本仓 normalizeTagRules（大小写敏感）。
+        updateWrapperSettings: patch => {
+            const wrappers = getSharedBodyWrappers(extensionSettings);
+            for (const key of ['keepTags', 'extraTags']) if (key in patch) wrappers[key] = normalizeTagRules(patch[key]).join(',');
+        },
+        getWrapperSettings: () => getSharedBodyWrappers(extensionSettings),
+        refreshWrapperInputs() {},
         normalizeTagRules,
+        showToast() {},
         saveSettingsDebounced: () => { saves++; },
         stSaveSettings() {},
     });
@@ -105,18 +123,21 @@ test('settings input and change persist normalized wrapper syntax and refill the
     handlers['#sp-mem-extratags:input'].call(field);
     // 本仓合同：包裹规则原样保留、大小写敏感（AGENTS §2.1）；上游会 lower 归一为 [draft]...[/draft]。
     assert.equal(settings.extraTags, '[DRAFT]...[/DRAFT],think');
+    settings.keepTags = '正文';
     handlers['#sp-mem-extratags:change'].call(field);
     assert.equal(field.value, '[DRAFT]...[/DRAFT],think');
     assert.equal(settings.extraTags, field.value);
+    assert.equal(settings.keepTags, '正文', '只保存编辑字段，不覆盖另一个面板的改动');
     assert.equal(saves, 2);
 
-    const readback = productionRegion("$in('#sp-mem-keeptags').val(typeof s.keepTags", "$in('#sp-custom-prompt')");
-    const rendered = {};
-    vm.runInNewContext(`const s = getSettings();\n${readback}`, {
-        getSettings: () => settings,
-        $in: selector => ({ val: value => { rendered[selector] = value; } }),
+    const readback = productionRegion('function refreshWrapperInputs() {', 'function bindMemoryHandlers() {');
+    const rendered = { '#sp-mem-keeptags': { value: '', matches: () => true }, '#sp-mem-extratags': { value: '', matches: () => false } };
+    vm.runInNewContext(`${readback}\nrefreshWrapperInputs();`, {
+        getWrapperSettings: () => settings,
+        $in: selector => [rendered[selector]],
     });
-    assert.equal(rendered['#sp-mem-extratags'], '[DRAFT]...[/DRAFT],think');
+    assert.equal(rendered['#sp-mem-extratags'].value, '[DRAFT]...[/DRAFT],think');
+    assert.equal(rendered['#sp-mem-keeptags'].value, '', '保持正在输入的焦点字段');
 });
 
 test('production recent generation history excludes configured draft blocks from AI material', () => {
@@ -124,7 +145,8 @@ test('production recent generation history excludes configured draft blocks from
     const build = vm.runInNewContext(`${region}\nbuildGenerationHistoryContext`, {
         // 本仓默认 keepTags 为 ''（M0，AGENTS §3.3）；上游缺省 'content'。
         // 该生产链路走 sanitizeGenerationContextText（非裸 stripTags）；定界符大小写敏感，故与正文同大小写。
-        getSettings: () => ({ keepTags: '', extraTags: '[DRAFT]...[/DRAFT]' }),
+        getSettings: () => ({}),
+        getWrapperSettings: () => ({ keepTags: '', extraTags: '[DRAFT]...[/DRAFT]' }),
         selectVisibleChatHistory,
         substituteParams: value => String(value ?? ''),
         sanitizeGenerationContextText,
