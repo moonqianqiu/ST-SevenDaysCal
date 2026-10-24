@@ -528,7 +528,7 @@ delete globalThis.__zmerUniversalToastThemeCleanup; globalThis.toastr = null;
 const memorySettings = seam.getSettings(); memorySettings.useQianQianJie = false; memorySettings.useBaiBaiBook = false; memorySettings.useAnima = false; memorySettings.useDatabase = true; memorySettings.databaseWorldbookName = 'Feedback Test Book';
 setContext(context('feedback-test-chat', {}, { is_group: false, file_name: 'feedback-test-chat', char_name: 'Role', avatar_url: 'role.png' }));
 seam.setDialogShadow({ querySelector() { return null; }, appendChild() {} });
-async function checkDatabasePreflight(helper, title, decision = true) {
+async function checkDatabasePreflight(helper, title, reason, decision = true) {
   globalThis.TavernHelper = helper;
   globalThis.__feedbackCapture.confirmMarkup = ''; globalThis.__feedbackCapture.confirmOk = null; globalThis.__feedbackCapture.confirmCancel = null;
   const pending = seam.memoryPreCheckConfirm();
@@ -537,11 +537,17 @@ async function checkDatabasePreflight(helper, title, decision = true) {
   const callback = decision ? globalThis.__feedbackCapture.confirmOk : globalThis.__feedbackCapture.confirmCancel;
   if (!callback) throw new Error('production database preflight did not render the expected confirmation choice');
   callback();
-  if (await pending !== decision) throw new Error('database preflight did not preserve its existing continue/cancel decision');
+  const result = await pending;
+  if (!decision) {
+    if (result !== false) throw new Error('database preflight did not preserve cancellation');
+  } else if (result?.proceed !== true || result.memorySnapshot?.source !== 'database'
+    || result.memorySnapshot.status !== 'fallback-confirmed' || result.memorySnapshot.reason !== reason) {
+    throw new Error('database preflight did not preserve the confirmed fallback snapshot');
+  }
 }
-await checkDatabasePreflight({ getWorldbook: async () => [] }, '数据库记忆为空');
-await checkDatabasePreflight({}, '数据库记忆不可用');
-await checkDatabasePreflight({ getWorldbook: async () => { throw new Error('mock read failure'); } }, '数据库记忆读取失败', false);
+await checkDatabasePreflight({ getWorldbook: async () => [] }, '数据库记忆为空', 'no-match');
+await checkDatabasePreflight({}, '数据库记忆不可用', 'api-unavailable');
+await checkDatabasePreflight({ getWorldbook: async () => { throw new Error('mock read failure'); } }, '数据库记忆读取失败', 'worldbook-read-failed', false);
 memorySettings.useDatabase = false; memorySettings.useBaiBaiBook = true;
 seam.setShortcutUiForTest({ querySelector(selector) { return selector.startsWith('#sp-mem-') ? { __feedbackSelector: selector } : null; }, querySelectorAll() { return []; } });
 globalThis.__feedbackCapture.statusHtml = [];

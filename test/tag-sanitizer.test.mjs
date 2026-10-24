@@ -42,7 +42,7 @@ test('configured paired wrappers remove complete multiline blocks including kept
 });
 
 test('configured paired wrappers handle adjacent and nested blocks with keep-list priority', () => {
-    const raw = '前[DRAFT]外层[DRAFT]内层[/draft]尾声[/DRAFT][状态]隐私[/状态]后';
+    const raw = '前[DRAFT]外层[DRAFT]内层[/DRAFT]尾声[/DRAFT][状态]隐私[/状态]后';
     assert.equal(stripTags(raw, { extraTags: '[DRAFT]...[/DRAFT],[状态]...[/状态]' }), '前后');
     // 本仓 M3 合同：extra 恒优先、可穿透 keep 子树（AGENTS §3.1）。同名规则同时进两栏时
     // extra 胜出、整块剔除，而非上游的「keep 清单优先」救援语义。

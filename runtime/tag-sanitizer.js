@@ -32,50 +32,77 @@ function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// token 正则：标签双分支 + 每条字面量包裹规则一组 `(开)([\s\S]*?)(闭)`。
-// 包裹规则的捕获组自 1 起按传入顺序编号，供解析器反查命中哪条规则；
-// 标签两分支内部均为非捕获组，不会偏移组号。
+// 标签仍优先识别；字面量定界符独立成 token，最长定界符优先，避免短前缀抢占。
+// 仅字面量分支有捕获组，且大小写敏感。
 function freshTokenRx(wrapperRules = []) {
-    const wrapperPart = wrapperRules
-        .map(rule => `|${escapeRegExp(rule.start)}([\\s\\S]*?)${escapeRegExp(rule.end)}`)
-        .join('');
+    const delimiters = [...new Set(wrapperRules.flatMap(rule => [rule.start, rule.end]))]
+        .sort((a, b) => b.length - a.length);
+    const wrapperPart = delimiters.length ? `|(${delimiters.map(escapeRegExp).join('|')})` : '';
     return new RegExp(
         `<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_SOURCE}\\s*\\/?>`
         + `|<\\/?${TAG_NAME_SOURCE}${TAG_ATTR_FALLBACK_SOURCE}\\/?>`
         + wrapperPart, 'gu');
 }
 
-// 单遍解析：标签 token / 字面量包裹 token 建树；文本段原样入 children。
-// 节点：{ kind:'xml'|'wrapper', name, normalized, closed, selfClosing, openRaw, closeRaw, children }
-// 包裹节点：openRaw/closeRaw 即配置里的开/闭定界符，children 为剥壳后的树（故嵌套包裹可整块处理）。
-// 约定：未闭合的闭合标记，若处于某个开标记子树内（stack>1）按文本保留（M0 逐字节复现），
-//       根层孤立闭合标记直接吞掉（与本地 orphan strip 一致）。
+// 先配平字面量包裹，再建树：未闭合的开/闭定界符保持文本，不能吞至 EOF。
+// 相同开/闭定界符优先关闭当前包裹；同开定界符规则沿用 collectWrapperRules 的优先级。
+function pairWrapperTokens(tokens, wrapperRules) {
+    const starts = new Map();
+    for (const rule of wrapperRules) if (!starts.has(rule.start)) starts.set(rule.start, rule);
+    const stack = [], openings = new Map(), closings = new Map();
+    tokens.forEach((match, index) => {
+        if (match[1] === undefined) return;
+        const token = match[0];
+        for (let i = stack.length - 1; i >= 0; i--) {
+            if (stack[i].rule.end !== token) continue;
+            const opening = stack[i];
+            openings.set(opening.index, { rule: opening.rule, closeIndex: index });
+            closings.set(index, opening.index);
+            stack.length = i;
+            return;
+        }
+        const rule = starts.get(token);
+        if (rule) stack.push({ rule, index });
+    });
+    return { openings, closings };
+}
+
+// XML 与字面量包裹共享节点树，包裹边界隔离内部 XML，避免内层闭合标签越界。
+// 节点保留原始定界符；根层孤立 XML 闭合标记仍按原合同清理。
 function parseSanitizerTree(text, wrapperRules = []) {
     const root = { kind: 'root', name: '', normalized: '', closed: true, selfClosing: false, openRaw: '', closeRaw: '', children: [] };
     const stack = [root];
-    const tokenRx = freshTokenRx(wrapperRules);
+    const tokens = [...text.matchAll(freshTokenRx(wrapperRules))];
+    const { openings, closings } = pairWrapperTokens(tokens, wrapperRules);
     let cursor = 0;
-    let match;
-    while ((match = tokenRx.exec(text))) {
+    tokens.forEach((match, index) => {
         const parent = stack[stack.length - 1];
         if (match.index > cursor) parent.children.push(text.slice(cursor, match.index));
         const token = match[0];
-        let hitRule = -1;
-        for (let i = 0; i < wrapperRules.length; i++) {
-            if (match[i + 1] !== undefined) { hitRule = i; break; }
-        }
-        if (hitRule >= 0) {
-            const rule = wrapperRules[hitRule];
-            parent.children.push({
-                kind: 'wrapper', name: rule.raw, normalized: rule.raw,
-                closed: true, selfClosing: false, openRaw: rule.start, closeRaw: rule.end,
-                children: parseSanitizerTree(match[hitRule + 1], wrapperRules).children,
-            });
+        const opening = openings.get(index);
+        if (opening) {
+            const node = {
+                kind: 'wrapper', name: opening.rule.raw, normalized: opening.rule.raw,
+                closed: true, selfClosing: false, openRaw: token, closeRaw: opening.rule.end,
+                openingIndex: index, children: [],
+            };
+            parent.children.push(node);
+            stack.push(node);
+        } else if (closings.has(index)) {
+            const openingIndex = closings.get(index);
+            for (let i = stack.length - 1; i > 0; i--) {
+                if (stack[i].kind !== 'wrapper' || stack[i].openingIndex !== openingIndex) continue;
+                stack.length = i;
+                break;
+            }
+        } else if (match[1] !== undefined) {
+            parent.children.push(token);
         } else if (token.startsWith('</')) {
             const norm = (OPEN_NAME_RX.exec(token)?.[1] || '').toLowerCase();
-            let matched = false;
+            let matched = false, scopeRoot = 0;
             for (let i = stack.length - 1; i > 0; i--) {
-                if (stack[i].kind === 'xml' && stack[i].normalized === norm) {
+                if (stack[i].kind === 'wrapper') { scopeRoot = i; break; }
+                if (stack[i].normalized === norm) {
                     stack[i].closed = true;
                     stack[i].closeRaw = token;
                     stack.length = i;
@@ -83,7 +110,7 @@ function parseSanitizerTree(text, wrapperRules = []) {
                     break;
                 }
             }
-            if (!matched && stack.length > 1) parent.children.push(token);
+            if (!matched && stack.length > scopeRoot + 1) parent.children.push(token);
         } else if (SELF_CLOSING_RX.test(token)) {
             parent.children.push({
                 kind: 'xml', name: OPEN_NAME_RX.exec(token)?.[1] || '', normalized: (OPEN_NAME_RX.exec(token)?.[1] || '').toLowerCase(),
@@ -95,8 +122,8 @@ function parseSanitizerTree(text, wrapperRules = []) {
             parent.children.push(node);
             stack.push(node);
         }
-        cursor = tokenRx.lastIndex;
-    }
+        cursor = match.index + token.length;
+    });
     stack[stack.length - 1].children.push(text.slice(cursor));
     return root;
 }
@@ -104,7 +131,7 @@ function parseSanitizerTree(text, wrapperRules = []) {
 // 配置名集合：同时收录原样与小写形式，保证与本地 'giu' 正则一致的大小写不敏感匹配。
 function toRuleSet(list) {
     const set = new Set();
-    for (const name of list) { set.add(name); set.add(name.toLowerCase()); }
+    for (const name of list) { set.add(name); if (!literalWrapperRule(name)) set.add(name.toLowerCase()); }
     return set;
 }
 

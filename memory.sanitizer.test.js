@@ -14,12 +14,16 @@ import { normalizeTagRules } from './utils/tag-names.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-test('golden baseline: 40 cases byte-identical (29 pre-refactor + 11 quote/extra-priority)', () => {
+test('golden baseline: 39 cases byte-identical plus explicit nested-noise correction', () => {
     const golden = JSON.parse(readFileSync(join(here, 'runtime', 'tag-sanitizer.golden.json'), 'utf8'));
     assert.ok(golden.cases.length >= 40);
     for (const c of golden.cases) {
         const got = stripTags(c.input, { ...c.opts });
-        assert.equal(got, c.oldOutput, `case ${c.id}: input=${JSON.stringify(c.input)} opts=${JSON.stringify(c.opts)}`);
+        if (c.id === 'brk-extra-paired') {
+            assert.equal(c.input, '前[[噪音]]中[[a [[b]] c]]尾');
+            assert.equal(c.oldOutput, '前中 c]]尾', '保留历史金样，不将泄漏尾段当作安全合同');
+            assert.equal(got, '前中尾', '嵌套 extra 必须整块删除');
+        } else assert.equal(got, c.oldOutput, `case ${c.id}: input=${JSON.stringify(c.input)} opts=${JSON.stringify(c.opts)}`);
     }
 });
 
@@ -144,3 +148,28 @@ test('wrapper rule in M3: extra pierces keep subtree, always wins', () => {
     // 外层 extra 包裹、内层 keep：整块剔除（与双中括号判例同构）
     assert.equal(stripTags('{{<content>秘密</content>}}', { keepTags: 'content', extraTags: '{{...}}' }), '');
 });
+const balancedWrapperCases = [
+    ['nested named extra', '前[DRAFT]外层[DRAFT]内层[/DRAFT]尾声[/DRAFT]后', { extraTags: '[DRAFT]...[/DRAFT]' }, '前后'],
+    ['nested punctuation extra', '前{{外层{{内层}}尾声}}后', { extraTags: '{{...}}' }, '前后'],
+    ['adjacent extra', 'A{{一}}{{二}}B', { extraTags: '{{...}}' }, 'AB'],
+    ['mixed nested extra', 'A{{外[状态]内[/状态]尾}}B', { extraTags: '{{...}},[状态]...[/状态]' }, 'AB'],
+    ['extra penetrates XML keep', '<content>前[DRAFT]外[DRAFT]内[/DRAFT]尾[/DRAFT]后</content>', { keepTags: 'content', extraTags: '[DRAFT]...[/DRAFT]' }, '前后'],
+    ['extra hides nested keep', '{{外{{内<content>秘密</content>}}尾}}', { keepTags: 'content', extraTags: '{{...}}' }, ''],
+    ['nested wrapper keep peels all shells', 'x{{外{{内}}尾}}y', { keepTags: '{{...}}' }, '外内尾'],
+    ['extra penetrates wrapper keep', 'x{{前[DRAFT]外[DRAFT]内[/DRAFT]尾[/DRAFT]后}}y', { keepTags: '{{...}}', extraTags: '[DRAFT]...[/DRAFT]' }, '前后'],
+    ['longest opening wins', 'A{{{{秘密}}}}B{{短}}C', { extraTags: '{{...}},{{{{...}}}}' }, 'ABC'],
+    ['longest closing stays balanced', 'A{{{{外{{内}}尾}}}}B', { extraTags: '{{...}},{{{{...}}}}' }, 'AB'],
+    ['same-name extra wins', '{{外{{内}}尾}}', { keepTags: '{{...}}', extraTags: '{{...}}' }, ''],
+    ['unclosed outer stays literal but closed inner is stripped', 'A{{外{{内}}尾', { extraTags: '{{...}}' }, 'A{{外尾'],
+    ['unclosed extra inside keep stays literal', '<content>前{{未闭合</content>后', { keepTags: 'content', extraTags: '{{...}}' }, '前{{未闭合'],
+    ['standalone close stays literal', 'A}}B', { extraTags: '{{...}}' }, 'A}}B'],
+    ['literal case sensitivity', 'A[draft]小写[/draft]B[DRAFT]大写[/DRAFT]C', { extraTags: '[DRAFT]...[/DRAFT]' }, 'A[draft]小写[/draft]BC'],
+    ['case-distinct keep and extra never alias', '[draft]保留[/draft][DRAFT]删除[/DRAFT]', { keepTags: '[draft]...[/draft]', extraTags: '[DRAFT]...[/DRAFT]' }, '保留'],
+    ['XML cannot close wrapper', 'A[DRAFT]外</DRAFT>[DRAFT]内[/DRAFT]尾[/DRAFT]B', { extraTags: '[DRAFT]...[/DRAFT]' }, 'AB'],
+    ['identical delimiters pair in order', 'A%%一%%B%%二%%C', { extraTags: '%%...%%' }, 'ABC'],
+];
+for (const [name, raw, options, expected] of balancedWrapperCases) {
+    test(`balanced literal wrappers: ${name}`, () => {
+        assert.equal(stripTags(raw, options), expected);
+    });
+}
