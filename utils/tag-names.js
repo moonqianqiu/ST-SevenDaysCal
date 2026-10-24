@@ -39,8 +39,9 @@ export function normalizeTagNames(csv) {
 // 包裹符设置沿用标签名的保守合同，并额外接受任意 `起始...结束` 字面量包裹规则。
 // 包裹规则原样保留（不 lowercase，定界符大小写敏感），标签名照旧小写归一。
 export function normalizeTagRules(csv) {
-    return String(csv || '').split(',')
+    // 去重与上游 normalizeWrapperRules 对齐（CONTENT 与 content 归并为一项），两仓同步。
+    return [...new Set(String(csv || '').split(',')
         .map(value => unwrapTagName(value))
         .filter(value => literalWrapperRule(value) !== null || TAG_NAME_RE.test(value))
-        .map(value => (literalWrapperRule(value) !== null ? value : value.toLowerCase()));
+        .map(value => (literalWrapperRule(value) !== null ? value : value.toLowerCase())))];
 }
