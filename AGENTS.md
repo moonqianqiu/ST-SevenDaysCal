@@ -23,7 +23,8 @@
 | :--- | :--- | :--- |
 | `manifest.json` | `version` 版本行冲突 | 直接裁为最新 `X.Y.Zmoon` |
 | `memory.js` | 状态声明区 / `jobSignal` / 清洗器区域 | **严格保留本地资产**：① `const _jobSignalDisposes = new WeakMap();` 与 `disposeJobSignal` 双向清理协议（§3.2）；② `stripTags` 保持由 `runtime/tag-sanitizer.js` import + re-export，**严禁退回上游内联旧正则**；③ 两处 `_callApi` 取并集——本地提升 `signal`（`finally disposeJobSignal` 闭环）+ 上游 `diagnostic.sink`/`diagnostic.accepted()`，**不可取上游内联 `jobSignal()`**，否则 dispose 落空/悬空；④ 上游新特性照常吸收并逐段复核 |
-| `utils/tag-names.js` | 上游若改 `normalizeTagRules` 或新增规则形态 | **本地泛化保留**（本地产权文件）：`literalWrapperRule` 三条件与 `normalizeTagRules` 对包裹规则「原样保留、大小写敏感」的语义（自 ST-MyriadKnots P5 同步）逐字保留；仅吸收上游对标签名字符合同的改动。**v3.9.1 起上游新增命名中括号 `[name]...[/name]`（`PAIRED_BRACKET_RULE_RE`）并附带三项差异，一律不采纳**：① 规则名 lower 归一（本地原样保留）；② 定界符大小写不敏感（本地大小写敏感）；③ 要求 name 为合法标签名（本地接受任意「起始...结束」）。本地导出面是上游的严格超集、上游该正则无外部引用，故取本地不丢能力；`test/tag-sanitizer.test.mjs` 已按本地合同适配 |
+| `utils/tag-names.js` | 上游若改 `normalizeTagRules` 或新增规则形态 | **本地泛化保留**（本地产权文件）：`literalWrapperRule` 三条件与 `normalizeTagRules` 对包裹规则「原样保留、大小写敏感」的语义（自 ST-MyriadKnots P5 同步）逐字保留；仅吸收上游对标签名字符合同的改动。**v3.9.1 起上游新增命名中括号 `[name]...[/name]`（`PAIRED_BRACKET_RULE_RE`）并附带三项差异，一律不采纳**：① 规则名 lower 归一（本地原样保留）；② 定界符大小写不敏感（本地大小写敏感）；③ 要求 name 为合法标签名（本地接受任意「起始...结束」）。本地导出面是上游的严格超集、上游该正则无外部引用，故取本地不丢能力；`test/tag-sanitizer.test.mjs` 已按本地合同适配。**v3.9.5 起上游把 `normalizeTagRules` 改为 `utils/shared-body-wrappers.js` 的重导出（`normalizeWrapperRules`，含上述三项差异）——继续保本地实现，不采重导出**；上游 `utils/shared-body-wrappers.js` 文件本身照收（MK 上游 `settings-api` 测试跨仓引用本仓该文件，两仓上游 blob 逐字一致，**本仓不得改动它**） |
+| `index.js` + `runtime/settings.js`（共享包裹符容器） | v3.9.5 起上游引入跨插件共享容器（`extension_settings['schedule-planner'].bodyWrappers`，`getWrapperSettings`/`updateWrapperSettings` API，全读链已切换） | **采上游管线、挂本地语义**：① 读链 `getWrapperSettings()`（= `getSharedBodyWrappers`）全采纳；② **`updateWrapperSettings` 本地覆写**（`runtime/settings.js`）——写入用本仓 `normalizeTagRules`（大小写敏感），不得用 `updateSharedBodyWrappers`（会按上游规则 lower 归一命名对，破坏 §2.1 合同）；③ **`getSettings()` 中 `getWrapperSettings()` 初始化调用必须在本地默认值回填之后**——全新安装时共享容器 merge 只认已存在的键，先初始化会落到上游回退值 `keepTags:'content'` 丢失 M0（§3.3）；④ `index.js` 面板采上游 `refreshWrapperInputs`/blur 刷新管线 + 本地三句文案与 `bindTagField` 两栏冲突拦截（拦截读/回退走 `getWrapperSettings()`，不用面板快照）。上游 v3.9.5 新增「HTML 注释对作包裹定界符」能力**不采纳**：本仓注释属 M0 卫生清理（始终剥除、不充当定界符，与 MK 跨仓一致），期望已按本仓合同适配留痕 |
 | `runtime/store-local-applied.test.js` | 上游扩充 codec/诊断测试 vs 本地 Windows 适配 | 本地适配（`pathToFileURL(loader).href` / `fileURLToPath` 替代 POSIX 的裸路径 loader 与 `new URL(...).pathname`）**不可回退**；吸收上游新增测试代码，新代码先查 POSIX 专属写法（§2.1③） |
 | `runtime/store-codec.js` / `runtime/quick-reply-shortcuts.js` | 上游新增能力 | 正常吸收；codec 不得静默覆盖损坏/未来版本 wrapper，Quick Reply 只改构画自有组，不得改用户其他组或宿主总开关 |
 
@@ -82,7 +83,7 @@
    ```bash
    node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：除已知跳过项外全绿，2026-10-24 实测 **373 tests / 372 pass / 0 fail / 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。`b3da109` 合并当期基线为 355/353/1 fail(EPERM)/1 skip，差异来自此后新增的 18 条同名嵌套包裹符用例与预检断言对齐。
+   *标准*：除已知跳过项外全绿或仅剩已定性的上游原生红，2026-10-24 实测 **411 tests / 409 pass / 1 fail（上游原生红，见 §6.1 v3.9.6 行）/ 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。
    > **上游自带测试导入裸运行时**：上游 v3.9.1 新增的 `test/tag-sanitizer.test.mjs` 直接 `import '../memory.js'`，而 `memory.js` 顶部导入 SillyTavern 运行时（`../../../extensions.js`、`../../../../script.js`），裸检出下 `ERR_MODULE_NOT_FOUND`（纯上游树同样挂）。本地改为直连 `../runtime/tag-sanitizer.js`——`memory.js` 的 `stripTags` 本就是对该模块的纯 re-export，语义等价，且使测试在本环境可运行。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
@@ -90,13 +91,9 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v3.9.4**（上游提交 `24ba8d2`），本次合并提交 `b3da109`，整改提交 `b0863c1`；备份分支 `backup/pre-v3.9.4` 已随推送完成清理；v3.9.1~v3.9.4 主要变更：空间路由与草稿清理重构（`business/space/context.js` +73 行）、新增命名中括号包裹规则 `[name]...[/name]`（`utils/tag-names.js` 的 `PAIRED_BRACKET_RULE_RE`，含 lower 归一与大小写不敏感定界符匹配）、书签精简与台词提示校准（`business/lines/*`、`business/coordinate/feature.js`）、千千结前情提要重新计入材料（`business/memory/qianqianjie.js` 的 `joinPromptSections(prequelText, recallText)`）、新增手机/轴模块（`business/axis/phone.js`）；
-- **当前版本**：`manifest.json` 版本号 **`3.9.4moon`**；
-- **最近提交历史**（更早见 `git log`）：
-  - `1739c19`：`merge: integrate upstream v3.8.3`（线 schema 重写、外部聊天存储、记忆上下文窗口化；上游自带 2 红测试本地适配）；
-  - `c001d45`：`merge: integrate upstream v3.8.2`（叙事推进幅度 narrativePace、事件制门票选择、每日赏乐卡 daily-menu、线迭代细化）；
-  - `ed85bdc`：`merge: integrate upstream v3.7.16`（线保存兼容 TT metadata-only saver、Ticket 编号分类）；
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.8.0（2026-10-20，`bd44158`；编辑器弹窗化迁移、recall 四项记忆化保留、删除 legacyIndexPuts 硬编码、3 处上游原生红适配），两仓清洗器保持输出 100% 逐字节一致；2026-09-30 通用字面量包裹规则（P5）自该仓同步至本仓，本次合并后复验金样 cases 数组仍 40/40 例 0 差异。
+- **当前分支**：`master`；已合入上游 **v3.9.6**（上游提交 `49b8d48`），本次合并提交见 §6.1 末行；v3.9.5+v3.9.6 主要变更：**跨插件共享包裹符容器**（`utils/shared-body-wrappers.js`，两仓上游逐字一致；本仓采纳读链管线、覆写写入归一化并修复全新安装的 M0 时序，详见 §2 表新增行）、`memory.js` 清洗器改 import `sanitizeStoryBody`（本仓继续 `runtime/tag-sanitizer.js` re-export）、index.js ±433 重构（工作指示器等）、新增注释对包裹符能力（不采纳，§2）、新增 38 例测试；
+- **当前版本**：`manifest.json` 版本号 **`3.9.6moon`**；
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.8.0 + 2026-10-24 审计修复（`7729c3a`），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
@@ -113,6 +110,7 @@
 | v3.8.5 | 10-11 | `4a7e09a` | v3.8.4 接入普通存档 gzip codec、诊断 TTL 保留及保存前压缩；v3.8.5 接入 Quick Reply 快捷入口；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；合并 codec/Quick Reply 测试并保留 Windows loader 适配 | 245/245 核心；扩展 258/259（1 宿主测试跳过） |
 | v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：`manifest.json`→`3.9.0moon`；`index.js` 保留本地 §3.3 面板文案；`memory.js` 2 处（状态声明区保本地、清洗器区并集 + 补 `import { normalizeTagRules } from './utils/tag-names.js'` 以保住上游 `normalizeTagList`/`parseTagList` 导出面）；`runtime/quick-reply-shortcuts-host.test.js` 保本地 Windows loader 适配；`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` **取上游**（本地旧版 import 的 `buildCreativeChatSystemPrompt` 已被删除）；`business/space/context.test.js` 取上游全文 + 追加本地 2 例意图断言。另删 2 例上游过时用例（`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`），均为 v3.9.0 删除 `index.js` 内联记忆函数后未同步的上游自带红 | 308 tests / 306 pass（1 例沙箱 EPERM 伪红）/ 1 skip |
 | v3.9.4 | 10-20 | `b3da109` | 6 文件冲突/10 块：`runtime/settings.js` keepTags 取本地 `''`（M0，上游 `'content'` 会洗空无标签正文），上游 `spaceUseCharacterPersona` 自动合入；`utils/tag-names.js` 取本地泛化 `literalWrapperRule`（导出面为上游严格超集，上游 `PAIRED_BRACKET_RULE_RE` 无外部引用）；`memory.js` 整体取本地（上游改动全在冲突区内，冲突区外与本地逐字节相同，零丢失）；`index.js` 三处文案取本地并补 `[DRAFT]...[/DRAFT]` 举例；`manifest.json`→`3.9.4moon`；`business/space/context.test.js` 上游全文+本地 2 例。新增 `test/tag-sanitizer.test.mjs` 9 例全适配（导入改直连 `runtime/tag-sanitizer.js` + 8 例按 M0-M3/P5 合同改写）。**2 处自动合并静默保留本地过时适配**：`qianqianjie.test.js`（v3.7.13「前情不计入」已被 v3.9.3 改回计入）、`context.test.js`（`semantic-route`→`write`+kind） | 355 tests / 353 pass（1 例沙箱 EPERM）/ 1 skip |
+| v3.9.5+v3.9.6 | 10-24 | `8222038` | 6 文件冲突/16 块：共享包裹符容器采纳（§2 新增行：读链采上游、写入本仓归一化、M0 时序修复）；`utils/tag-names.js` 2 段保本地（不采 `normalizeWrapperRules` 重导出）；`memory.js` 2 段保本地（`runtime/tag-sanitizer.js` re-export，`_jobSignalDisposes` 闭环自动合并在位）；`index.js` 4 段管线嫁接（`refreshWrapperInputs`/blur + 三句文案 + 冲突拦截挂 `updateWrapperSettings`）；预检断言采上游 `{proceed}` 单行版；`test/tag-sanitizer.test.mjs` 6 段按 moon 合同（注释对包裹符期望适配留痕）；vm 区域测试补 `getWrapperSettings` mock。上游原生红 1 例：`narrative-preferences`「semantic-route applies…」纯上游树同败（期望语义路由输出含节奏文案，实现未含），保留不修 | 411 tests / 409 pass / 1 fail（上游原生）/ 1 skip |
 
 ---
 

@@ -134,7 +134,9 @@ test('confirmed portable import to an empty normal chat commits through its curr
 test('generation history carries real mesids only for internal memory exclusion, not API messages', () => {
     const region = productionFunctions('function buildRecentGenerationHistory(ctx, historyLimit, opts = {}) {', 'function outlineWorldInfoTriggerText(history) {');
     const context = evaluateFunctionRegion(region, 'buildGenerationHistoryContext', {
+        // 生产读取走共享容器 getWrapperSettings()；本仓默认 M0（两栏空，AGENTS §3.3）。
         getSettings: () => ({ keepTags: '', extraTags: '' }),
+        getWrapperSettings: () => ({ keepTags: '', extraTags: '' }),
         selectVisibleChatHistory,
         substituteParams: value => value,
         sanitizeGenerationContextText: value => String(value).replace(/<erase>[\s\S]*?<\/erase>/g, ''),
@@ -162,7 +164,9 @@ test('generation history carries real mesids only for internal memory exclusion,
 test('discussion recent-floor ids are computed from the exact sanitized visible messages', () => {
     const region = productionFunctions('function buildRecentChatEntries(ctx, floorCount = 6, perMessageChars = 2500) {', 'function worldInfoMaxContext(ctx) {');
     const helpers = evaluateFunctionRegion(region, '({ buildRecentChatEntries, getRecentVisibleFloorIds })', {
+        // 生产读取走共享容器 getWrapperSettings()；本仓默认 M0（两栏空，AGENTS §3.3）。
         getSettings: () => ({ keepTags: '', extraTags: '' }),
+        getWrapperSettings: () => ({ keepTags: '', extraTags: '' }),
         selectVisibleChatHistory,
         memory: { stripTags: value => String(value).replace(/<erase>[\s\S]*?<\/erase>/g, '') },
     });
