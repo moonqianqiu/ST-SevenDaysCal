@@ -1,5 +1,6 @@
 import { getSharedBodyWrappers } from '../utils/shared-body-wrappers.js';
 import { normalizeTagRules } from '../utils/tag-names.js';
+import { initializeSharedProcessingPrompt, getSharedProcessingPrompt, updateSharedProcessingPrompt } from '../utils/shared-processing-prompt.js';
 // runtime/settings.js — 设置数据读写、功能开关与 API 预设。
 import { extension_settings } from '../../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../../script.js';
@@ -18,9 +19,10 @@ export const DEFAULT_SETTINGS = {
     apiPresets       : [],
     apiPresetActiveId: '',   // 上次选中的预设 id，纯 UI 高亮/回显用，不代表已生效
     // 机械任务分流：把「记忆摘要 / 大纲推进判定」这类机械调用路由到某个预设（如便宜小模型），
-    // 生成类（点/线/面/间/棱/历）始终走上面主 API。空值表示不分流。
+    // 默认走上面内容 API；小剧场可通过 theaterPresetId 单独选择。空值表示不分流。
     // 存的是预设 id；指向的预设被删或缺 url/key 时，loadUtilityCfg() 自动退回主 API。
     utilityPresetId  : '',
+    theaterPresetId  : '',   // 小剧场正文与美化共用预设引用；空值跟随内容 API
     fabShow : true,
     // 插件总开关：false = 构画完全隐身（藏悬浮球 / 楼内块 / 锚点收藏入口，停一切后台判定与潜伏注入），如同未安装；
     // 设置面板仍可从酒馆魔杖菜单进入以重新开启。默认开。
@@ -92,7 +94,8 @@ export const DEFAULT_SETTINGS = {
     // 两列表皆空 = M0 不清洗（仅轻量卫生）；配任一列表即启用对应过滤。
     keepTags       : '',   // 保活块：剥掉标签标记、内部内容原样保留（内部不再二次清洗）；keep 块之外的一切（其余标签块+裸文本）剔除——M2/M3
     extraTags      : '',   // 强制删除这些标签块及内容（可穿透 keep 内部，恒优先于 keep）——M1/M3
-    customPrompt   : '',         // 创作链自定义写作规范；机械链只使用统一基础处理层
+    jailbreakPrompt: '',        // 旧本地值仅保留；文字请求使用共享 processingPrompt。
+    dailyMenuImageRules: '',     // 菜单成菜构成描述规则；空值使用菜单模块的内置默认
     spacePersona   : '',         // 间·顾问模式下的人格语气覆盖；角色卡人格模式开启时保留此文本但本轮不使用
     spaceUseCharacterPersona: false, // 间·用当前卡AI人物的性格口吻作为聊天人格；缺省保持旧版顾问模式
     // 棱（小剧场）
@@ -120,10 +123,12 @@ export const updateWrapperSettings = patch => {
     }
     return wrappers;
 };
+export const getProcessingPrompt = () => getSharedProcessingPrompt(extension_settings);
+export const setProcessingPrompt = value => updateSharedProcessingPrompt(extension_settings, value);
 
 export function getSettings() {
     const s = extension_settings[PLUGIN_ID] ??= { ...DEFAULT_SETTINGS };
-    // 老用户的设置段可能缺后加字段（如 customPrompt）：逐一补默认值，只补缺失、不覆盖已有值。
+    // 老用户的设置段逐一补缺失默认，不覆盖已有值或删除其它旧属性。
     for (const k in DEFAULT_SETTINGS) if (!(k in s)) s[k] = DEFAULT_SETTINGS[k];
     // 展开默认对象时数组仍会共享引用；设置层必须持有自己的容器。
     if (s.calendarTemplates === DEFAULT_SETTINGS.calendarTemplates) s.calendarTemplates = [];
@@ -134,6 +139,8 @@ export function getSettings() {
     // 共享容器初始化必须在本地默认值（keepTags:''）回填之后：全新安装时 shared-body-wrappers
     // 的 merge 只认已存在的键，先初始化会落到上游回退值 'content' 而丢失 M0 直通默认。
     getWrapperSettings();
+    // 破限提示词共享容器（上游 v3.10.0）：无 M0 语义，随上游惯例紧跟包裹符容器初始化。
+    initializeSharedProcessingPrompt(extension_settings, saveSettingsDebounced);
     return s;
 }
 
@@ -199,6 +206,21 @@ export function loadUtilityCfg() {
     };
 }
 
+export function loadTheaterCfg() {
+    const id = getSettings().theaterPresetId || '';
+    const p = id ? loadApiPresets().find(x => x.id === id) : null;
+    if (!p || !p.url || !p.key) return loadCfg();
+    return {
+        url          : p.url,
+        key          : p.key,
+        model        : p.model || '',
+        spAdditionalParams: p.spAdditionalParams || '',
+        excludeParams: Array.isArray(p.excludeParams) ? p.excludeParams : [],
+        timeoutSec   : normalizeApiTimeout(p.timeoutSec),
+        stream       : p.stream === true,
+    };
+}
+
 export function saveCfg(c) {
     parseAdditionalParams(c.spAdditionalParams);
     const s = getSettings();
@@ -250,6 +272,7 @@ export function deleteApiPreset(id) {
     const list = loadApiPresets().filter(p => p.id !== id);
     getSettings().apiPresets = list;
     if (getSettings().apiPresetActiveId === id) getSettings().apiPresetActiveId = '';
+    if (getSettings().theaterPresetId === id) getSettings().theaterPresetId = '';
     saveSettingsDebounced();
 }
 
