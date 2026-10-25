@@ -3,14 +3,13 @@
 本仓库是 [`atonal519/ST-SevenDaysCal`](https://github.com/atonal519/ST-SevenDaysCal) 的 fork（作者 moon 定制版），在 `master` 分支上跟踪上游最新基线，并叠加了"moon"专属改动。`origin = moonqianqiu/ST-SevenDaysCal`，`upstream = atonal519/ST-SevenDaysCal`。
 
 > **用途**：供后续会话/开发者在执行"合并上游"、"冲突裁决"、"代码维护"时，迅速掌握本 fork 的核心定制、版本惯例、冲突裁决规则以及架构设计决策，确保合并上游时不丢弃本地核心资产。
-> **更名说明**：本文件原名 `memory.md`，自 `3.7.12moon` 起更名为 `AGENTS.md`（曾短暂命名 `AGENT.md`），内容定位不变。
 > **体例**：本文件只维护**当前契约**与**索引**；历次合并的逐版本实录与验证数据随 git 历史沉淀（`git log -p AGENTS.md` 按版本回查，`git show <合并提交>` 看合并能力摘要）。每次合并后仅在 §6.1 索引表追加一行，并把新的持久性裁决沉淀进 §2/§3 相应契约。
 
 ---
 
 ## 1. 同步与版本惯例
 
-1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前已同步至 **`3.9.4moon`**）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
+1. **版本号命名规范 (`manifest.json`)**：`version` = 上游版本号 + `moon` 后缀（当前值见 §6，不在本条重复维护）。每次合并上游必然在 `version` 行冲突，直接按此惯例解决。
 2. **分支与合并安全策略**：合并前先建备份分支 `git branch backup/master-before-upstream-vX.Y.Z master` → 在 `master` 执行 `git merge --no-ff upstream/master`（先以 `git merge-tree --write-tree master upstream/master` 预判，实际冲突应与预判一致）→ 裁决（§2）→ 四道门禁（§5）→ AGENTS.md 索引表追加记录 → push origin；验证完全通过前严禁向远程 force push。**备份分支仅在本地存在，合并验证通过并推送后即可清理**（`git branch -d`，其尖端已是 master 历史内的祖先提交，即合并提交的第一父状态，删除零损失）。
 
 ---
@@ -33,7 +32,7 @@
 ### 2.1 上游发布质量已知模式（红测试快速归因；均先以纯上游 worktree 复跑坐实「非合并损坏」再定适配）
 
 1. **千千结 4 例红断言**：上游 v3.7.13 更改千千结召回语义但未同步自己的测试（纯上游实测 4/12 失败），后续版本一直未修；本地已按新语义适配（§3.4），不受影响。
-2. **作者机器路径引用**：v3.7.15/16 上游测试引用 `../../../../../util/fast-json-patch.js`（越出仓库根、上游未携带）；本地曾 vendor 最小 RFC 6902 shim，v3.8.0 上游删除该测试后 shim 一并回收，模式终结。**新上游测试文件先扫越根 import**。
+2. **作者机器路径引用（模式已终结，教训保留）**：v3.7.15/16 上游测试曾越根引用 `../../../../../util/fast-json-patch.js`（本地 vendor shim 已随 v3.8.0 上游删除该测试一并回收）。**新上游测试文件先扫越根 import**。
 3. **POSIX 专属写法**：v3.8.0 上游 `store-local-applied.test.js` 用裸路径 `--experimental-loader` 与 `new URL(...).pathname`，Windows 下在 loader 注册阶段即崩；本地已适配为 `pathToFileURL`/`fileURLToPath`（§2 表）。**上游新增测试代码先查同款写法**。
 4. **跨仓 settings 断言**：兄弟仓 MK 的 `tests/settings-api.test.mjs` 期望本仓 `loadCfg()` 含 `spAdditionalParams`（本仓 v3.8.0 起已提供，持续保持）。
 
@@ -91,9 +90,9 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v3.10.0+v3.10.1**（上游提交 `d7b83f3`），本次合并提交见 §6.1 末行；主要变更：**入口切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物；本仓整套采纳 `package.json`/`rolldown.config.mjs`/`BUILD.md`，**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源）、共用破限提示词容器（`utils/shared-processing-prompt.js`，`initializeSharedProcessingPrompt` 并列于 M0 回填之后）、菜单插图、双讨论窗口、独立剧场预设（`theaterPresetId`）、台账「截止上一有效 AI 回复」防倒写（`getMemoryContext` 增 `maxFloor` 截断）、`customPrompt`→`jailbreakPrompt`（共享容器）；
+- **当前分支**：`master`；已合入上游 **v3.10.0+v3.10.1**（上游提交 `d7b83f3`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
 - **当前版本**：`manifest.json` 版本号 **`3.10.1moon`**；
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.9.4（合并提交 `7864d36`，2026-10-25），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓新增的 `shared-processing-prompt.js`。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.9.5（合并提交 `91bdc07`，2026-10-25），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓新增的 `shared-processing-prompt.js`。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
@@ -104,14 +103,14 @@
 | v3.7.14 | — | `31310a3` | 唯一 manifest 冲突；人物卡提名、移除构画自设 token 上限、面内空摘要回退最近 6 楼；资产域零字节变化 | 152 |
 | v3.7.15 | — | `652fb95` | 唯一 manifest 冲突；剧情创作偏好/panel-failure/deadline/诊断链；save-transaction 引作者机器路径 → vendor fast-json-patch（产权 12→14） | 201 |
 | v3.7.16 | — | `ed85bdc` | 唯一 manifest 冲突；TT metadata-only saver、Ticket 编号分类；上游仍缺 fast-json-patch，本地适配存活 | 208 |
-| v3.8.0 | 10-05 | `29bc7e7` | 5 冲突（.gitignore / manifest / AGENTS.md add-add / save-transaction modify-delete：采纳上游删除并回收 shim，产权 14→13 / memory.js 三块：`_callApi` 并集规则沉淀 §2）；上游 Windows 红测试本地适配（§2.1③）；保存合同改 local-applied 即返回；`spAdditionalParams` 新增修复 MK 跨仓红 | 203 |
-| v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突（`3.8.2moon`），其余 48 文件自动合并；narrativePace / 事件制门票 / daily-menu / 线首次生成合同收紧；合并前暗雷预审全排除 | 227 |
-| v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突（`3.8.2moon`→`3.8.3moon`），index.js/memory.js 自动合并双向无损（merged-vs-master 纯上游、merged-vs-upstream 纯本地）；上游改大纲创作合同文案与 Line 字段说明但未同步自带 2 红测试（narrative-preferences:36 / narrative-pace:88，纯上游树复现实证），断言随上游新文案本地适配、语义不变；上游新增测试全数 Windows 兼容 | 245 |
-| v3.8.5 | 10-11 | `4a7e09a` | v3.8.4 接入普通存档 gzip codec、诊断 TTL 保留及保存前压缩；v3.8.5 接入 Quick Reply 快捷入口；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；合并 codec/Quick Reply 测试并保留 Windows loader 适配 | 245/245 核心；扩展 258/259（1 宿主测试跳过） |
-| v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：`manifest.json`→`3.9.0moon`；`index.js` 保留本地 §3.3 面板文案；`memory.js` 2 处（状态声明区保本地、清洗器区并集 + 补 `import { normalizeTagRules } from './utils/tag-names.js'` 以保住上游 `normalizeTagList`/`parseTagList` 导出面）；`runtime/quick-reply-shortcuts-host.test.js` 保本地 Windows loader 适配；`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` **取上游**（本地旧版 import 的 `buildCreativeChatSystemPrompt` 已被删除）；`business/space/context.test.js` 取上游全文 + 追加本地 2 例意图断言。另删 2 例上游过时用例（`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`），均为 v3.9.0 删除 `index.js` 内联记忆函数后未同步的上游自带红 | 308 tests / 306 pass（1 例沙箱 EPERM 伪红）/ 1 skip |
-| v3.9.4 | 10-20 | `b3da109` | 6 文件冲突/10 块：`runtime/settings.js` keepTags 取本地 `''`（M0，上游 `'content'` 会洗空无标签正文），上游 `spaceUseCharacterPersona` 自动合入；`utils/tag-names.js` 取本地泛化 `literalWrapperRule`（导出面为上游严格超集，上游 `PAIRED_BRACKET_RULE_RE` 无外部引用）；`memory.js` 整体取本地（上游改动全在冲突区内，冲突区外与本地逐字节相同，零丢失）；`index.js` 三处文案取本地并补 `[DRAFT]...[/DRAFT]` 举例；`manifest.json`→`3.9.4moon`；`business/space/context.test.js` 上游全文+本地 2 例。新增 `test/tag-sanitizer.test.mjs` 9 例全适配（导入改直连 `runtime/tag-sanitizer.js` + 8 例按 M0-M3/P5 合同改写）。**2 处自动合并静默保留本地过时适配**：`qianqianjie.test.js`（v3.7.13「前情不计入」已被 v3.9.3 改回计入）、`context.test.js`（`semantic-route`→`write`+kind） | 355 tests / 353 pass（1 例沙箱 EPERM）/ 1 skip |
-| v3.9.5+v3.9.6 | 10-24 | `8222038` | 6 文件冲突/16 块：共享包裹符容器采纳（§2 新增行：读链采上游、写入本仓归一化、M0 时序修复）；`utils/tag-names.js` 2 段保本地（不采 `normalizeWrapperRules` 重导出）；`memory.js` 2 段保本地（`runtime/tag-sanitizer.js` re-export，`_jobSignalDisposes` 闭环自动合并在位）；`index.js` 4 段管线嫁接（`refreshWrapperInputs`/blur + 三句文案 + 冲突拦截挂 `updateWrapperSettings`）；预检断言采上游 `{proceed}` 单行版；`test/tag-sanitizer.test.mjs` 6 段按 moon 合同（注释对包裹符期望适配留痕）；vm 区域测试补 `getWrapperSettings` mock。上游原生红 1 例：`narrative-preferences`「semantic-route applies…」纯上游树同败（期望语义路由输出含节奏文案，实现未含），保留不修 | 411 tests / 409 pass / 1 fail（上游原生）/ 1 skip |
-| v3.10.0+v3.10.1 | 10-25 | `fa0572f` | 3 冲突：manifest 版本→`3.10.1moon`+js→`gouhua-app.js`；`runtime/settings.js` 三处并集（M0 `keepTags:''` 与本仓 `updateWrapperSettings` 逐字保留，上游新增 processing-prompt 导出/初始化并列于 M0 回填后）；`index.js` 破限+菜单插图 HTML 采上游、本仓三参 `bindTagField` 与文案保留；rolldown 构建体系整套采纳（fork 产物含全部 moon 资产）。代修 2 处：`test/tag-sanitizer.test.mjs` 区域终止标记随 `sp-custom-prompt`→`sp-jailbreak-prompt` 更名（fix 提交）；MK `settings-api` 补 `shared-processing-prompt` 导入重写（MK 侧 7ce9f32）。上游原生红 3 例（纯上游 v3.10.1 树同红：dish-CAS、semantic-route、刻度刷新异常） | 455 tests / 451 pass / 3 fail（上游原生）/ 1 skip |
+| v3.8.0 | 10-05 | `29bc7e7` | 5 冲突；`_callApi` 并集规则沉淀 §2；上游 Windows 红测试适配（§2.1③）；回收 fast-json-patch shim（产权 14→13）；`spAdditionalParams` 新增修复 MK 跨仓红 | 203 |
+| v3.8.2 | 10-06 | `c001d45` | 唯一 manifest 冲突，48 文件自动合并；narrativePace / 事件制门票 / daily-menu | 227 |
+| v3.8.3 | 10-07 | `1739c19` | 唯一 manifest 冲突；上游改大纲合同文案未同步自带 2 红测试（纯上游树复现），断言随上游新文案适配、语义不变 | 245 |
+| v3.8.5 | 10-11 | `4a7e09a` | gzip codec + Quick Reply 接入；保留四模式清洗器、通用包裹规则、标签设置校验及 jobSignal finally 清理；保留 Windows loader 适配 | 258/259（1 宿主测试跳过） |
+| v3.9.0 | 10-15 | `dc05fe9` | 7 文件冲突：index.js 保本地文案；memory.js 保本地+补 normalizeTagRules import；narrative 两测试**取上游**（本地旧版 import 已删除函数）；context.test 取上游+本地 2 例；删 2 例上游过时用例（纯上游同红） | 306/308（1 EPERM 伪红）/1 skip |
+| v3.9.4 | 10-20 | `b3da109` | 6 文件冲突/10 块：settings keepTags 取 M0；tag-names 取本地泛化（上游正则无外部引用）；memory.js 整体取本地；index.js 文案+DRAFT 举例；test/tag-sanitizer 9 例按 moon 合同适配；2 处自动合并静默保留过时适配（判据已沉淀 §5.2） | 353/355（1 EPERM）/1 skip |
+| v3.9.5+v3.9.6 | 10-24 | `8222038` | 6 文件冲突/16 块：共享包裹符容器采纳（§2 专行）；tag-names/memory.js/index.js 保本地并嫁接上游管线；test/tag-sanitizer 6 段按 moon 合同适配。上游原生红 1 例：narrative-preferences「semantic-route applies…」纯上游同败，保留不修 | 409/411（1 上游原生）/1 skip |
+| v3.10.0+v3.10.1 | 10-25 | `fa0572f` | 3 冲突：manifest→`3.10.1moon`+js→`gouhua-app.js`；settings.js 三处并集（M0 与本仓 updateWrapperSettings 逐字保留，processing-prompt 并列 M0 回填后）；index.js 采上游 HTML、本仓三参 bindTagField 保留；rolldown 构建整套采纳。代修 2 处（区域终止标记更名、MK settings-api 补导入重写）。上游原生红 3 例（纯上游同红：dish-CAS、semantic-route、刻度刷新异常） | 451/455（3 上游原生）/1 skip |
 
 ---
 
