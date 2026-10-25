@@ -94,7 +94,9 @@ test('paired wrapper rule keeps legacy XML rescue and double bracket contracts',
 });
 
 test('settings input and change persist normalized wrapper syntax and refill the field', () => {
-    const region = productionRegion('function sanitizeTagList(raw) {', "$in('#sp-custom-prompt')");
+    // v3.10.0 起上游把创作链自定义提示词区改为「破限提示词」（#sp-jailbreak-prompt），
+    // 本区终止标记随其更名；区域语义不变——仍是 sanitizeTagList + bindTagField 的包裹符绑定段。
+    const region = productionRegion('function sanitizeTagList(raw) {', "$in('#sp-jailbreak-prompt')");
     const handlers = {};
     // 生产 getSettings() 会先物化本地默认（keepTags:''）再初始化共享容器（AGENTS §3.3）；
     // 夹具必须呈现同一时序，否则共享容器会落到上游回退值 'content'。
