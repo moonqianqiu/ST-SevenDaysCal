@@ -34,7 +34,7 @@
 
 1. **千千结 4 例红断言**：上游 v3.7.13 更改千千结召回语义但未同步自己的测试（纯上游实测 4/12 失败），后续版本一直未修；本地已按新语义适配（§3.4），不受影响。
 2. **作者机器路径引用（模式已终结，教训保留）**：v3.7.15/16 上游测试曾越根引用 `../../../../../util/fast-json-patch.js`（本地 vendor shim 已随 v3.8.0 上游删除该测试一并回收）。**新上游测试文件先扫越根 import**。
-3. **POSIX 专属写法**：v3.8.0 上游 `store-local-applied.test.js` 用裸路径 `--experimental-loader` 与 `new URL(...).pathname`，Windows 下在 loader 注册阶段即崩；本地已适配为 `pathToFileURL`/`fileURLToPath`（§2 表）。**上游新增测试代码先查同款写法**。
+3. **POSIX 专属写法**：v3.8.0 上游 `store-local-applied.test.js` 用裸路径 `--experimental-loader` 与 `new URL(...).pathname`，Windows 下在 loader 注册阶段即崩；本地已适配为 `pathToFileURL`/`fileURLToPath`（§2 表）。**上游新增测试代码先查同款写法**。v4.0.1 实录：上游 `runtime/menu-image-store.test.js` 子进程 spawn 仍以裸 temp 路径作 `--experimental-loader`（上游自修的 writeSync 同步输出未涵盖此点），本地补 `pathToFileURL(loader).href` 后转绿，该文件自此进入 §5.2 差异清单。
 4. **跨仓 settings 断言**：兄弟仓 MK 的 `tests/settings-api.test.mjs` 期望本仓 `loadCfg()` 含 `spAdditionalParams`（本仓 v3.8.0 起已提供，持续保持）。
 
 ---
@@ -62,8 +62,8 @@
 
 ### 3.4 本地专属 / 适配测试文件
 - `memory.sanitizer.test.js`：清洗器 40 例金样逐字节比对 + 四模式语义探针（含通用包裹规则 4 例，自 ST-MyriadKnots P5 同步）；
-- `business/space/context.test.js`：**上游文件 + 本地 2 例意图断言**（v3.9.0 起；上游版不含「你好 / 请解释点卡片是什么 → discuss」与「给我写一条线 / 输出成点卡片 → semantic-route、给我一个点和一条线 → clarify」两组；合并时取上游全文并追加本地两组，勿整体回退——上游 `classifySpaceIntent` 签名与语义持续兼容）；
-- `business/memory/qianqianjie.test.js`（**上游文件的本地适配版**）：当前 `qianqianjie.js` 只以 recall 作材料，前情单独存在视为空，读取失败消息带「千千结记忆读取失败：」前缀；测试保留这些与实现一致的断言。后续合并裁决仍先核对实现语义，再吸收上游 harness/新测试，勿盲目任取一侧。
+- `business/space/context.test.js`：**v4.0.1 起与上游逐字一致**。本地 2 例意图断言（问候→discuss、显式生成→write+kind/clarify）已随 v4.0.0 退役——上游把 `classifySpaceIntent` 掏空为无参常量桩（恒返 `semantic-route`），意图路由整体移交 LLM 语义路由，v3.9.x 时代「签名与语义持续兼容」前提失效；「问候不触发生成」的测试意图由上游语义路由承接，**勿按旧例回植**；
+- `business/memory/qianqianjie.test.js`：**v4.0.1 起与上游逐字一致**——「千千结记忆读取失败：」前缀断言已获上游原生采纳（并新增 `qianQianJieMemoryDiagnostic` 导出），本地适配版被吸收退场。后续合并若上游再触碰该文件，仍先核对 `qianqianjie.js` 实现语义再吸收，勿盲目任取一侧。
 
 ---
 
@@ -77,13 +77,13 @@
 
 1. **冲突标记零残留**：`git grep -n '^<<<<<<<'` 匹配数为 0。
 2. **本地资产文件清单校验**：合并结果相对 `upstream/master` 应只差以下核心本地产权文件（`git diff --name-only upstream/master`）：
-   `AGENTS.md`、`.gitignore`、`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`index.js`、`manifest.json`、`memory.js`、`memory.sanitizer.test.js`、`runtime/settings.js`、`runtime/store-local-applied.test.js`、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`test/tag-sanitizer.test.mjs`（v3.9.4 起新增）、`utils/tag-names.js`、`.gitattributes`（v3.9.0 起新增，`* text=auto eol=lf`，共 18 个文件）。历史适配差异：`runtime/quick-reply-shortcuts-host.test.js` 保留 Windows loader 适配（§2.1③）并在无 SillyTavern 宿主源码时 `t.skip`；`test/index-chat-boundary.test.mjs` 删除 1 例上游过时用例（其 grep 的 `outlineChatMemoryError` / `readCreativeChatMemory` / `composeCreativeChatMessages` 已被 v3.9.0 从 `index.js` 移除，纯上游树复现同款红；`test/memory-source-production.test.mjs` 的同类删除已由上游自行完成，v3.10.2 起该文件与本仓逐字一致，不再列入差异）；**v3.10.2 起 `runtime/local-diagnostics.js`、`runtime/local-diagnostics.test.js`、`tools/read-local-diagnostics.mjs`、`runtime/external-chat-storage.js`、`runtime/external-chat-host-bridge.js` 已随上游存储迁移删除，勿当成本地丢失补回**；**`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 一律取上游**（上游删除了 `import { buildCreativeChatSystemPrompt } from '../state.js'`，该函数在 v3.9.0 树中已不存在，保留本地旧版必 import 失败）。其余差异须逐项解释。
+   `AGENTS.md`、`.gitattributes`（`* text=auto eol=lf`）、`.gitignore`、`gouhua-app.js`（产物随源重建）、`index.js`（moon 三句文案 + 三参 bindTagField）、`manifest.json`（版本 moon 后缀）、`memory.js`、`memory.sanitizer.test.js`、`runtime/menu-image-store.test.js`（v4.0.1 起本地 `pathToFileURL` 代修，§2.1③）、`runtime/quick-reply-shortcuts-host.test.js`（Windows loader 适配 + 无宿主源码时 `t.skip`）、`runtime/settings.js`（M0 三件套 §2）、`runtime/store-local-applied.test.js`（Windows 适配）、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`test/tag-sanitizer.test.mjs`（moon 合同适配）、`utils/tag-names.js`（共 16 个文件）。**v4.0.1 起三个历史适配测试文件已与上游逐字一致并退出差异清单**：`business/memory/qianqianjie.test.js`（前缀断言获上游原生采纳）、`business/space/context.test.js`（2 例意图断言随上游掏空 classifySpaceIntent 而退役，§3.4）、`test/index-chat-boundary.test.mjs`（上游 v4.0.0 把旧 readCreativeChatMemory 用例重写为 readMemory 端口用例并自带 getWrapperSettings 桩，本地删例与 M0 stub 均被吸收；`test/memory-source-production.test.mjs` 同类删除已由上游于 v3.10.2 完成）；**v3.10.2 起 `runtime/local-diagnostics.js`、`runtime/local-diagnostics.test.js`、`tools/read-local-diagnostics.mjs`、`runtime/external-chat-storage.js`、`runtime/external-chat-host-bridge.js` 已随上游存储迁移删除，勿当成本地丢失补回**；**`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 一律取上游**（上游删除了 `import { buildCreativeChatSystemPrompt } from '../state.js'`，该函数在 v3.9.0 树中已不存在，保留本地旧版必 import 失败）。其余差异须逐项解释。
    > **v3.9.4 起须特别警惕「自动合并静默保留本地过时适配」**：`business/memory/qianqianjie.test.js` 的前情提要断言在 v3.7.13 按「前情不计入材料」本地适配，上游 v3.9.3 又改回「计入材料」——因上游该处回到基线值，3-way 自动合并只看到本地单侧改动而静默保留本地旧断言，合并后 3 例红。判据：**凡本地改写过某个测试文件、而上游后续又修改同一区域时，必须核对源码当前语义，不能因"自动合并无冲突"就认为正确**（该文件原有注释已预警此情形）。同理 `business/space/context.test.js` 的 `classifySpaceIntent` 返回值域在 v3.9.1 由 `'semantic-route'` 改为 `'write'`+`kind`。
 3. **全量自动化测试回归套件**（`node --test` 全量 glob；**必须加 `--test-isolation=none`**——默认隔离会 spawn 子进程，在 DSH 沙箱下恒报 `spawn EPERM`，属沙箱边界而非代码缺陷）：
    ```bash
    node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：除已知跳过项外全绿或仅剩已定性的上游原生红，2026-10-27 实测 **458 tests / 454 pass / 3 fail（上游原生红，见 §6.1 v3.10.x 行）/ 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。3 红 = `narrative-preferences`「semantic-route applies…」（v3.9.6 起延续）+ `production index/store merges two overlapping dish references through ordinary chat metadata`（v3.10.2 前名为「store 外部 CAS 合并重叠菜引用」，随存储迁移改名而红照旧）+ `ledger/ui-refresh 刻度刷新异常`——三例在纯上游 v3.10.2 树按名复跑同红（后者单独跑该文件为绿，属全量顺序下的既有基线红，v3.10.1 基线同样如此）。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。
+   *标准*：除已知跳过项外全绿或仅剩已定性的上游原生红，2026-10-31 实测 **502 tests / 500 pass / 1 fail（上游原生红）/ 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。唯一红 = `ledger/ui-refresh`「刻度 capture local apply survives a refresh exception and does not repeat generation」——纯上游 v4.0.1 树全量同红（上游原生），单独跑该文件 2/2 绿，属全量顺序下的既有基线红（v3.10.1 基线同样如此）。旧 3 红中：`narrative-preferences`「semantic-route applies…」已随上游 v4.0.0 测试重写消解；dish-CAS 一红已由本地 `pathToFileURL` 代修复（§2.1③）；纯上游 v4.0.1 全量另有 4 红中 3 例（dish-CAS、QuickReply host 派发、metadata 立即应用不等 ACK）被本仓既有适配吸收或修复。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。
    > **上游自带测试导入裸运行时**：上游 v3.9.1 新增的 `test/tag-sanitizer.test.mjs` 直接 `import '../memory.js'`，而 `memory.js` 顶部导入 SillyTavern 运行时（`../../../extensions.js`、`../../../../script.js`），裸检出下 `ERR_MODULE_NOT_FOUND`（纯上游树同样挂）。本地改为直连 `../runtime/tag-sanitizer.js`——`memory.js` 的 `stripTags` 本就是对该模块的纯 re-export，语义等价，且使测试在本环境可运行。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
@@ -91,10 +91,11 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v3.10.2**（上游提交 `cc5562f`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
-- **当前版本**：`manifest.json` 版本号 **`3.10.2moon`**；
+- **当前分支**：`master`；已合入上游 **v4.0.1**（上游提交 `c671eeb`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
+- **当前版本**：`manifest.json` 版本号 **`4.0.1moon`**；
+- **v4.0.0 发布注意（对用户宣告用）**：导入「点」会**连菜单与衣橱一起替换**所选聊天的对应数据、旧包缺失内容也会清空——发布说明必须提醒先备份；
 - **v3.10.2 存储架构迁移（发版必读）**：构画业务根与楼层快照由白鳥外置存储改为**随聊天 `chat_metadata` 保存**（`sp-store`/`sp-memory`/`sp-theater`/`sp-ledger` 四个根，见 `runtime/chat-storage.js`），上游戏 `runtime/external-chat-storage.js`(1205)、`external-chat-host-bridge.js`、`local-diagnostics.js`、`tools/read-local-diagnostics.mjs` 已随上游删除。**存量用户数据在白鳥，插件不会自动迁移**：`hasLegacyChatStorage()` 为真时 `normalRoot()` 返回 `null` → 必须由用户在「设置 → 存储管理 → 迁回聊天」触发一次性只读迁回（只 GET 原集合 → 就地应用 → 一次 `saveChat`）。发布说明必须写明该动作，否则用户会误判数据丢失；普通聊天不再探测白鳥，只在迁回入口可用时访问。
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.9.9（合并提交 `9538f05`，2026-10-27），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓新增的 `shared-processing-prompt.js`。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.10.1（合并提交 `4c455c6`，2026-10-30；全量 2635 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
@@ -114,6 +115,7 @@
 | v3.9.5+v3.9.6 | 10-24 | `8222038` | 6 文件冲突/16 块：共享包裹符容器采纳（§2 专行）；tag-names/memory.js/index.js 保本地并嫁接上游管线；test/tag-sanitizer 6 段按 moon 合同适配。上游原生红 1 例：narrative-preferences「semantic-route applies…」纯上游同败，保留不修 | 409/411（1 上游原生）/1 skip |
 | v3.10.0+v3.10.1 | 10-25 | `fa0572f` | 3 冲突：manifest→`3.10.1moon`+js→`gouhua-app.js`；settings.js 三处并集（M0 与本仓 updateWrapperSettings 逐字保留，processing-prompt 并列 M0 回填后）；index.js 采上游 HTML、本仓三参 bindTagField 保留；rolldown 构建整套采纳。代修 2 处（区域终止标记更名、MK settings-api 补导入重写）。上游原生红 3 例（纯上游同红：dish-CAS、semantic-route、刻度刷新异常） | 451/455（3 上游原生）/1 skip |
 | v3.10.2 | 10-27 | `3449f33` | 4 冲突：bundle 重建（49 hunk）、manifest→`3.10.2moon`、store-local-applied 保 `fileURLToPath` 并删上游已随外部存储移除的 `externalEncodedLine` 夹具、AGENTS 采上游 3 条新契约（随聊天保存/有界诊断/尺度不外溢）并删 `read-local-diagnostics` 条款。存储迁移无本地产权交集（本地从未改 external-chat-storage 链路），纯上游直通。上游原生红仍 3 例同集合（dish-CAS 用例已更名） | 458/454（3 上游原生）/1 skip |
+| v4.0.0+v4.0.1 | 10-31 | `b607e24` | 7 冲突：qianqianjie/context/index-chat-boundary 三测试整取上游（本地适配被上游吸收，差异清单 18→16）；index.js 上游 sp-prompt-body 结构 + 本地三句文案；tag-sanitizer 测试上游终止标记/掩码桩 + 保本仓 stripTags 直连导入；manifest→`4.0.1moon`；bundle 重建。classifySpaceIntent 被掏空 → 本地 2 例意图断言退役（§3.4）；dish-CAS 代修 `pathToFileURL`（§2.1③）；旧 3 红 → 剩 1 上游原生（刻度刷新，单跑绿） | 502/500（1 上游原生）/1 skip |
 
 ---
 
