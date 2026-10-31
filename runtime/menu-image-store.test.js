@@ -46,6 +46,7 @@ export async function load(url, context, nextLoad) {
 }
 `);
         await fs.writeFile(runner, `
+import { writeSync } from 'node:fs';
 const chain = new Proxy({ length: 0 }, { get: (value, key) => key === 'length' ? 0 : () => chain });
 globalThis.jQuery = Object.assign(() => chain, { fn: {} }); globalThis.$ = globalThis.jQuery;
 globalThis.window = { innerWidth: 1024, innerHeight: 768, matchMedia: () => ({ matches: false }), addEventListener() {}, removeEventListener() {} };
@@ -63,10 +64,12 @@ const results = await Promise.race([Promise.all([seam.dailyMenuImageController.r
 const saved = seam.readStore(seam.keyDesc('daily-menu', 'user', ''));
 if (imageCalls !== 2 || results.some(result => result.status !== 'updated') || saved.items[0].image?.path !== '/user/images/menu/external-1.png' || saved.items[1].image?.path !== '/user/images/menu/external-2.png') throw new Error('overlapping menu image references failed: ' + JSON.stringify({ results, saved }));
 if (JSON.stringify(saved).includes('data:image')) throw new Error('chat payload did not preserve only the final gallery references');
-process.stdout.write('MENU_IMAGE_CHAT_SAVE ' + JSON.stringify({ results: results.map(result => result.status), paths: saved.items.map(item => item.image.path), savedToChat: true }) + '\\n');
+// Sync output also reaches the parent under Node 26 hosts that drop async pipe writes.
+writeSync(1, 'MENU_IMAGE_CHAT_SAVE ' + JSON.stringify({ results: results.map(result => result.status), paths: saved.items.map(item => item.image.path), savedToChat: true }) + '\\n');
 `);
         const result = await new Promise(resolve => {
-            const child = spawn(process.execPath, ['--experimental-loader', loader, runner], { env: { ...process.env, NODE_OPTIONS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+            // Windows: bare temp path is not a valid ESM loader specifier; register it as a file URL.
+            const child = spawn(process.execPath, ['--experimental-loader', pathToFileURL(loader).href, runner], { env: { ...process.env, NODE_OPTIONS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
             let stdout = '', stderr = '';
             child.stdout.on('data', value => { stdout += value; }); child.stderr.on('data', value => { stderr += value; });
             child.once('error', error => resolve({ code: -1, stdout, stderr: String(error) }));

@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { selectVisibleChatHistory } from '../business/lines/history.js';
+import { getSharedBodyWrappers } from '../utils/shared-body-wrappers.js';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const indexSource = fs.readFileSync(path.join(repo, 'index.js'), 'utf8');
@@ -101,9 +102,8 @@ test('confirmed portable import to an empty normal chat commits through its curr
 test('generation history carries real mesids only for internal memory exclusion, not API messages', () => {
     const region = productionFunctions('function buildRecentGenerationHistory(ctx, historyLimit, opts = {}) {', 'function outlineWorldInfoTriggerText(history) {');
     const context = evaluateFunctionRegion(region, 'buildGenerationHistoryContext', {
-        // 生产读取走共享容器 getWrapperSettings()；本仓默认 M0（两栏空，AGENTS §3.3）。
         getSettings: () => ({ keepTags: '', extraTags: '' }),
-        getWrapperSettings: () => ({ keepTags: '', extraTags: '' }),
+        getWrapperSettings: () => getSharedBodyWrappers({}),
         selectVisibleChatHistory,
         substituteParams: value => value,
         sanitizeGenerationContextText: value => String(value).replace(/<erase>[\s\S]*?<\/erase>/g, ''),
@@ -131,9 +131,8 @@ test('generation history carries real mesids only for internal memory exclusion,
 test('discussion recent-floor ids are computed from the exact sanitized visible messages', () => {
     const region = productionFunctions('function buildRecentChatEntries(ctx, floorCount = 6, perMessageChars = 2500) {', 'function worldInfoMaxContext(ctx) {');
     const helpers = evaluateFunctionRegion(region, '({ buildRecentChatEntries, getRecentVisibleFloorIds })', {
-        // 生产读取走共享容器 getWrapperSettings()；本仓默认 M0（两栏空，AGENTS §3.3）。
         getSettings: () => ({ keepTags: '', extraTags: '' }),
-        getWrapperSettings: () => ({ keepTags: '', extraTags: '' }),
+        getWrapperSettings: () => getSharedBodyWrappers({}),
         selectVisibleChatHistory,
         memory: { stripTags: value => String(value).replace(/<erase>[\s\S]*?<\/erase>/g, '') },
     });
@@ -211,4 +210,16 @@ test('buildMessages passes internal recent ids to memory but returns only API ro
     assert.deepEqual(JSON.parse(JSON.stringify(memoryOptions.excludeMesIds)), [7, 8, 9]);
     assert.equal(messages.some(message => Object.hasOwn(message, 'mesId')), false);
     assert.deepEqual(JSON.parse(JSON.stringify(messages.at(-2))), { role: 'assistant', content: 'recent floor' });
+});
+
+test('间的记忆接口传递本轮查询与匹配的近期六楼排除ID', async () => {
+    const region = productionFunctions('readMemory: (ctx, query) =>', '        readRecent:');
+    let options;
+    const ports = evaluateFunctionRegion('', `({${region}})`, {
+        getMemText: async opts => { options = opts; return 'builtin'; },
+        getRecentVisibleFloorIds: (_ctx, count) => { assert.equal(count, 6); return [12, 14, 15, 16, 17, 18]; },
+    });
+    const result = await ports.readMemory({}, '讨论');
+    assert.equal(result, 'builtin');
+    assert.deepEqual(JSON.parse(JSON.stringify(options)), { query: '讨论', excludeMesIds: [12, 14, 15, 16, 17, 18] });
 });

@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createQianQianJieMemoryAccess, QIANQIANJIE_BRIDGE_KEY } from './qianqianjie.js';
-
-// 上游 v3.7.13 曾改为「仅 recall 作材料、前情不计入」，本地按当时语义适配过本测试；
-// 上游 v3.9.3 又改回「前情计入材料」（joinPromptSections(prequelText, recallText)），
-// 故下列断言一律回到上游语义。合并上游若再触碰这些用例，仍须先核对 qianqianjie.js 当前语义。
+import { createQianQianJieMemoryAccess, QIANQIANJIE_BRIDGE_KEY, qianQianJieMemoryDiagnostic } from './qianqianjie.js';
 
 function promptSnapshot(overrides = {}) {
     return {
@@ -196,7 +192,11 @@ test('qianqianjie reports synchronous and asynchronous prompt failures without f
         assert.equal(result.status, 'read-failed');
         assert.equal(result.text, '');
         assert.equal(result.message, '千千结记忆读取失败：prompt-read-failed');
+        assert.equal(qianQianJieMemoryDiagnostic(result), '千千结记忆读取失败：prompt-read-failed');
         assertNoLegacyReads(fixture);
+    }
+    for (const status of ['read-failed', 'error']) {
+        assert.equal(qianQianJieMemoryDiagnostic({ status, message: 'raw-prompt-failure' }), '千千结记忆读取失败：raw-prompt-failure');
     }
 });
 
