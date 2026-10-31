@@ -83,7 +83,7 @@
    ```bash
    node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'
    ```
-   *标准*：除已知跳过项外全绿或仅剩已定性的上游原生红，2026-10-31 实测 **502 tests / 500 pass / 1 fail（上游原生红）/ 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。唯一红 = `ledger/ui-refresh`「刻度 capture local apply survives a refresh exception and does not repeat generation」——纯上游 v4.0.1 树全量同红（上游原生），单独跑该文件 2/2 绿，属全量顺序下的既有基线红（v3.10.1 基线同样如此）。旧 3 红中：`narrative-preferences`「semantic-route applies…」已随上游 v4.0.0 测试重写消解；dish-CAS 一红已由本地 `pathToFileURL` 代修复（§2.1③）；纯上游 v4.0.1 全量另有 4 红中 3 例（dish-CAS、QuickReply host 派发、metadata 立即应用不等 ACK）被本仓既有适配吸收或修复。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。
+   *标准*：除已知跳过项外全绿或仅剩已定性的上游原生红，2026-10-31 实测 **522 tests / 520 pass / 1 fail（上游原生红）/ 1 skip**（跳过项为缺 SillyTavern 宿主源码的 Quick Reply loader 用例）。唯一红 = `ledger/ui-refresh`「刻度 capture local apply survives a refresh exception and does not repeat generation」——纯上游 v4.0.1 树全量同红（上游原生），单独跑该文件 2/2 绿，属全量顺序下的既有基线红（v3.10.1 基线同样如此）。旧 3 红中：`narrative-preferences`「semantic-route applies…」已随上游 v4.0.0 测试重写消解；dish-CAS 一红已由本地 `pathToFileURL` 代修复（§2.1③）；纯上游 v4.0.1 全量另有 4 红中 3 例（dish-CAS、QuickReply host 派发、metadata 立即应用不等 ACK）被本仓既有适配吸收或修复。**必须带 `--test-isolation=none`**：默认隔离会 spawn 子进程，在 DSH 沙箱下 `runtime/store-local-applied.test.js` 等用例报 `spawn EPERM` 伪红，属环境边界而非代码缺陷。
    > **上游自带测试导入裸运行时**：上游 v3.9.1 新增的 `test/tag-sanitizer.test.mjs` 直接 `import '../memory.js'`，而 `memory.js` 顶部导入 SillyTavern 运行时（`../../../extensions.js`、`../../../../script.js`），裸检出下 `ERR_MODULE_NOT_FOUND`（纯上游树同样挂）。本地改为直连 `../runtime/tag-sanitizer.js`——`memory.js` 的 `stripTags` 本就是对该模块的纯 re-export，语义等价，且使测试在本环境可运行。
 4. **与 ST-MyriadKnots 跨仓终验对拍**：40 例金样 case 数组与 `ST-MyriadKnots/src/tag-sanitizer.golden.json` 逐字节一致，双实现输出 **0 差异**。
 
@@ -91,8 +91,8 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v4.0.1**（上游提交 `c671eeb`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
-- **当前版本**：`manifest.json` 版本号 **`4.0.1moon`**；
+- **当前分支**：`master`；已合入上游 **v4.0.2**（上游提交 `45493dd`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
+- **当前版本**：`manifest.json` 版本号 **`4.0.2moon`**；
 - **v4.0.0 发布注意（对用户宣告用）**：导入「点」会**连菜单与衣橱一起替换**所选聊天的对应数据、旧包缺失内容也会清空——发布说明必须提醒先备份；
 - **v3.10.2 存储架构迁移（发版必读）**：构画业务根与楼层快照由白鳥外置存储改为**随聊天 `chat_metadata` 保存**（`sp-store`/`sp-memory`/`sp-theater`/`sp-ledger` 四个根，见 `runtime/chat-storage.js`），上游戏 `runtime/external-chat-storage.js`(1205)、`external-chat-host-bridge.js`、`local-diagnostics.js`、`tools/read-local-diagnostics.mjs` 已随上游删除。**存量用户数据在白鳥，插件不会自动迁移**：`hasLegacyChatStorage()` 为真时 `normalRoot()` 返回 `null` → 必须由用户在「设置 → 存储管理 → 迁回聊天」触发一次性只读迁回（只 GET 原集合 → 就地应用 → 一次 `saveChat`）。发布说明必须写明该动作，否则用户会误判数据丢失；普通聊天不再探测白鳥，只在迁回入口可用时访问。
 - **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.10.1（合并提交 `4c455c6`，2026-10-30；全量 2635 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
@@ -116,6 +116,7 @@
 | v3.10.0+v3.10.1 | 10-25 | `fa0572f` | 3 冲突：manifest→`3.10.1moon`+js→`gouhua-app.js`；settings.js 三处并集（M0 与本仓 updateWrapperSettings 逐字保留，processing-prompt 并列 M0 回填后）；index.js 采上游 HTML、本仓三参 bindTagField 保留；rolldown 构建整套采纳。代修 2 处（区域终止标记更名、MK settings-api 补导入重写）。上游原生红 3 例（纯上游同红：dish-CAS、semantic-route、刻度刷新异常） | 451/455（3 上游原生）/1 skip |
 | v3.10.2 | 10-27 | `3449f33` | 4 冲突：bundle 重建（49 hunk）、manifest→`3.10.2moon`、store-local-applied 保 `fileURLToPath` 并删上游已随外部存储移除的 `externalEncodedLine` 夹具、AGENTS 采上游 3 条新契约（随聊天保存/有界诊断/尺度不外溢）并删 `read-local-diagnostics` 条款。存储迁移无本地产权交集（本地从未改 external-chat-storage 链路），纯上游直通。上游原生红仍 3 例同集合（dish-CAS 用例已更名） | 458/454（3 上游原生）/1 skip |
 | v4.0.0+v4.0.1 | 10-31 | `b607e24` | 7 冲突：qianqianjie/context/index-chat-boundary 三测试整取上游（本地适配被上游吸收，差异清单 18→16）；index.js 上游 sp-prompt-body 结构 + 本地三句文案；tag-sanitizer 测试上游终止标记/掩码桩 + 保本仓 stripTags 直连导入；manifest→`4.0.1moon`；bundle 重建。classifySpaceIntent 被掏空 → 本地 2 例意图断言退役（§3.4）；dish-CAS 代修 `pathToFileURL`（§2.1③）；旧 3 红 → 剩 1 上游原生（刻度刷新，单跑绿） | 502/500（1 上游原生）/1 skip |
+| v4.0.2 | 10-31 | `11b4358` | 2 冲突（预判全中）：manifest→`4.0.2moon`、bundle 重建；index.js 账本自动化区自动合并（上游重摇防重复计数，无本地产权交集，三参 bindTagField 与 moon 文案核对在位）；新测试 20 例整取上游；旧基线红不变（单跑仍 2/2 绿） | 522/520（1 上游原生）/1 skip |
 
 ---
 
