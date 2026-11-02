@@ -134,6 +134,7 @@ import {
 import { getAlmanacInjectText } from './business/axis/inject.js';
 import { createAxisPanel } from './business/axis/panel.js';
 import { renderAxisToolbar } from './business/axis/toolbar.js';
+import { positionActionMenu, clearActionMenuPlacement } from './business/utils/action-menu.js';
 import { renderAxisUpcoming } from './business/axis/upcoming.js';
 import { renderAxisCalendar } from './business/axis/calendar.js';
 import { openAxisEditor, closeAxisEditor, setAxisSheet, navigateAxisMonth, createAxisEditorController, renderAxisEditor, renderAxisWeekdayHint } from './business/axis/editor.js';
@@ -3221,7 +3222,7 @@ function injectFab() {
     const posStyle = (!mobile && savedPos)
         ? `left:${savedPos.left}px;top:${savedPos.top}px;right:auto;bottom:auto;`
         : '';
-    const html = `<div id="${FAB_ID}" style="position:fixed;z-index:2000000;${posStyle}${fabEnabled() && pluginEnabled() ? '' : 'display:none'}">
+    const html = `<div id="${FAB_ID}" style="position:fixed;z-index:2000004;${posStyle}${fabEnabled() && pluginEnabled() ? '' : 'display:none'}">
         <button class="sp-fab-btn sp-${currentTheme}" title="构画"
             style="transform:translateZ(0);clip:auto;">
             ${PEN_ICON_SVG}
@@ -3406,7 +3407,7 @@ function injectModal() {
                         <div class="sp-head-tools">
                             <button class="sp-icon-btn sp-theme-toggle-btn" title="${themeToggleTitle()}">${icon(themeToggleIcon())}</button>
                             <button class="sp-icon-btn sp-fab-toggle-btn${fabEnabled() ? ' sp-btn-active' : ''}" title="悬浮按钮">${icon("circle-dot")}</button>
-                            <button class="sp-icon-btn sp-close-btn"    title="关闭">${icon("x", "", "style=\"font-size:var(--sp-fs-100)\"")}</button>
+                            <button class="sp-icon-btn sp-close-btn"    title="关闭">${icon("x")}</button>
                         </div>
                         <div class="sp-module-intro-pop" id="sp-module-intro-pop" style="display:none"></div>
                     </header>
@@ -4210,6 +4211,8 @@ function injectModal() {
     $('#chat').off('click.spAdultReveal keydown.spAdultReveal', '.sp-adult-sensitive').on('click.spAdultReveal', '.sp-adult-sensitive', revealAdult).on('keydown.spAdultReveal', '.sp-adult-sensitive', revealAdultKey);
     $inAll('#sp-body, #sp-lines-wrap, #sp-outline-wrap').on('click.spManualActionMenu', '.sp-action-menu-toggle', function (e) {
         e.stopPropagation(); const menu = $(this).closest('.sp-action-menu').get(0); const open = !$(menu).hasClass('sp-action-menu-open'); closeActionMenus(menu); $(menu).toggleClass('sp-action-menu-open', open).find('.sp-action-menu-list').attr('hidden', !open).end().find('.sp-action-menu-toggle').attr('aria-expanded', String(open));
+        if (open) positionActionMenu(menu);
+        else clearActionMenuPlacement(menu);
     }).on('click.spManualActionMenu', '.sp-action-menu-item', function (e) {
         e.stopPropagation(); const item = $(this); const menu = item.closest('.sp-action-menu'); const action = item.attr('data-action'); const idx = Number(menu.attr('data-line-idx') ?? menu.attr('data-idx')); const day = menu.attr('data-day');
         closeActionMenus();
@@ -4361,6 +4364,7 @@ function injectModal() {
         $(menu).toggleClass('sp-action-menu-open', open)
             .find('.sp-action-menu-list').attr('hidden', !open)
             .end().find('.sp-action-menu-toggle').attr('aria-expanded', String(open));
+        if (open) positionActionMenu(menu);
     };
     $almanac.off('click.spAxisToolbar', '.sp-alm-add, .sp-alm-gen, .sp-alm-supplement, .sp-alm-manage, .sp-action-menu-toggle, .sp-action-menu-item')
         .on('click.spAxisToolbar', '.sp-alm-add, .sp-alm-gen, .sp-alm-supplement, .sp-alm-manage, .sp-action-menu-toggle, .sp-action-menu-item', function (event) {
@@ -8156,6 +8160,7 @@ function closeActionMenus(except = null) {
         if (except && this === except) return;
         $(this).removeClass('sp-action-menu-open').find('.sp-action-menu-list').attr('hidden', true);
         $(this).find('.sp-action-menu-toggle').attr('aria-expanded', 'false');
+        clearActionMenuPlacement(this);
     });
 }
 
@@ -9335,6 +9340,7 @@ function onDragStart(e) {
     if (e.type === 'mousedown' && e.button !== 0) return;
     // Ignore drags starting on interactive elements inside the header.
     if ($(e.target).closest('.sp-icon-btn, .sp-sub-btn, button, a, input, textarea').length) return;
+    closeActionMenus();
     e.preventDefault();
     const sheet = inEl('.sp-sheet');
 
@@ -9401,6 +9407,7 @@ function onResizeStart(e) {
     // handle is hidden; any resize event on mobile is stray (e.g. bubbling
     // from the outline divider) — ignore it so the sheet doesn't shrink.
     if (isMobile()) return;
+    closeActionMenus();
     e.preventDefault();
     e.stopPropagation();
     const sheet = inEl('.sp-sheet');
@@ -9482,6 +9489,7 @@ function onResizeEnd() {
 function positionPanel() {
     const sheet = inEl('.sp-sheet');
     if (!sheet) return;
+    bindViewportSync();
     if (isMobile()) {
         sheet.style.left      = '';
         sheet.style.top       = '';
@@ -9489,7 +9497,6 @@ function positionPanel() {
         sheet.style.height    = '';
         sheet.style.transform = '';
         syncMobileViewport();
-        bindViewportSync();
         return;
     }
     let pos = null;
@@ -9505,6 +9512,7 @@ function bindViewportSync() {
     if (viewportSyncBound) return;
     viewportSyncBound = true;
     const onViewportChange = () => {
+        closeActionMenus();
         if (viewportSyncFrame !== null) return;
         const callback = () => { viewportSyncFrame = null; syncMobileViewport(); };
         viewportSyncFrame = typeof window.requestAnimationFrame === 'function'
