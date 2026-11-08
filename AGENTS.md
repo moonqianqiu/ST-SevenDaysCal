@@ -91,8 +91,8 @@
 
 ## 6. 当前仓库状态底数（基线备忘）
 
-- **当前分支**：`master`；已合入上游 **v4.1.4**（上游提交 `c7dedbe`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
-- **当前版本**：`manifest.json` 版本号 **`4.1.4moon`**；
+- **当前分支**：`master`；已合入上游 **v4.1.5**（上游提交 `9864eac`），合并提交与当期主要变更见 §6.1 末行。持久要点：**入口已切换 Rolldown bundle `gouhua-app.js`**（manifest `js` 字段改指产物）——**改源码后必须 `npm run build`**；minify 剥非 legal 注释属正常，源码为唯一真源；
+- **当前版本**：`manifest.json` 版本号 **`4.1.5moon`**；
 - **v4.0.0 发布注意（对用户宣告用）**：导入「点」会**连菜单与衣橱一起替换**所选聊天的对应数据、旧包缺失内容也会清空——发布说明必须提醒先备份；
 - **v3.10.2 存储架构迁移（发版必读）**：构画业务根与楼层快照由白鳥外置存储改为**随聊天 `chat_metadata` 保存**（`sp-store`/`sp-memory`/`sp-theater`/`sp-ledger` 四个根，见 `runtime/chat-storage.js`），上游戏 `runtime/external-chat-storage.js`(1205)、`external-chat-host-bridge.js`、`local-diagnostics.js`、`tools/read-local-diagnostics.mjs` 已随上游删除。**存量用户数据在白鳥，插件不会自动迁移**：`hasLegacyChatStorage()` 为真时 `normalRoot()` 返回 `null` → 必须由用户在「设置 → 存储管理 → 迁回聊天」触发一次性只读迁回（只 GET 原集合 → 就地应用 → 一次 `saveChat`）。发布说明必须写明该动作，否则用户会误判数据丢失；普通聊天不再探测白鳥，只在迁回入口可用时访问。
 - **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.10.1（合并提交 `4c455c6`，2026-10-30；全量 2635 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
@@ -120,6 +120,7 @@
 | v4.1.0+v4.1.1 | 11-01 | `dce0dfa` | 2 冲突（预判全中）：manifest→`4.1.1moon`、bundle 重建；QQJ 取材改按当前问题读已存剧情（qianqianjie 实现与测试整取上游）、story-clock 统一时间戳解析直通——均无本地产权交集，moon 三句与三参 bindTagField 核对在位 | 536/534（1 上游原生）/1 skip |
 | v4.1.2+v4.1.3 | 11-03 | `8c56433` | 2 冲突（预判全中）：manifest→`4.1.3moon`、bundle 重建（34 hunk）；action-menu 新模块直通，moon 三句与三参 bindTagField 核对在位 | 542/540（1 上游原生）/1 skip |
 | v4.1.4 | 11-07 | `3fec748` | 2 冲突（预判全中）：manifest→`4.1.4moon`、bundle 重建；user-name-mask 局部刷新直通（本地零改动文件），moon 三句与三参 bindTagField 核对在位 | 545/543（1 上游原生）/1 skip |
+| v4.1.5 | 11-08 | `9864eac` | 2 冲突（预判全中）：manifest→`4.1.5moon`、bundle 重建；GPT 推理模型参数兼容直通（api/client.js 本地零改动文件），moon 三句与三参 bindTagField 核对在位 | 597/595（1 上游原生）/1 skip |
 
 ---
 
