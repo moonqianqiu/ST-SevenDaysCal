@@ -95,7 +95,7 @@
 - **当前版本**：`manifest.json` 版本号 **`4.1.7moon`**；
 - **v4.0.0 发布注意（对用户宣告用）**：导入「点」会**连菜单与衣橱一起替换**所选聊天的对应数据、旧包缺失内容也会清空——发布说明必须提醒先备份；
 - **v3.10.2 存储架构迁移（发版必读）**：构画业务根与楼层快照由白鳥外置存储改为**随聊天 `chat_metadata` 保存**（`sp-store`/`sp-memory`/`sp-theater`/`sp-ledger` 四个根，见 `runtime/chat-storage.js`），上游戏 `runtime/external-chat-storage.js`(1205)、`external-chat-host-bridge.js`、`local-diagnostics.js`、`tools/read-local-diagnostics.mjs` 已随上游删除。**存量用户数据在白鳥，插件不会自动迁移**：`hasLegacyChatStorage()` 为真时 `normalRoot()` 返回 `null` → 必须由用户在「设置 → 存储管理 → 迁回聊天」触发一次性只读迁回（只 GET 原集合 → 就地应用 → 一次 `saveChat`）。发布说明必须写明该动作，否则用户会误判数据丢失；普通聊天不再探测白鳥，只在迁回入口可用时访问。
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 v0.10.1（合并提交 `4c455c6`，2026-10-30；全量 2635 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 1.1.6（2026-11-09 合入上游 v1.1.4~v1.1.6，合并提交 `04a0f15`；全量 3485/3484+1skip 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
