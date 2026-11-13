@@ -95,7 +95,7 @@
 - **当前版本**：`manifest.json` 版本号 **`4.2.0moon`**；
 - **v4.0.0 发布注意（对用户宣告用）**：导入「点」会**连菜单与衣橱一起替换**所选聊天的对应数据、旧包缺失内容也会清空——发布说明必须提醒先备份；
 - **v3.10.2 存储架构迁移（发版必读）**：构画业务根与楼层快照由白鳥外置存储改为**随聊天 `chat_metadata` 保存**（`sp-store`/`sp-memory`/`sp-theater`/`sp-ledger` 四个根，见 `runtime/chat-storage.js`），上游戏 `runtime/external-chat-storage.js`(1205)、`external-chat-host-bridge.js`、`local-diagnostics.js`、`tools/read-local-diagnostics.mjs` 已随上游删除。**存量用户数据在白鳥，插件不会自动迁移**：`hasLegacyChatStorage()` 为真时 `normalRoot()` 返回 `null` → 必须由用户在「设置 → 存储管理 → 迁回聊天」触发一次性只读迁回（只 GET 原集合 → 就地应用 → 一次 `saveChat`）。发布说明必须写明该动作，否则用户会误判数据丢失；普通聊天不再探测白鳥，只在迁回入口可用时访问。
-- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 1.1.6（2026-11-09 合入上游 v1.1.4~v1.1.6，合并提交 `04a0f15`；全量 3485/3484+1skip 全绿），两仓清洗器保持输出 100% 逐字节一致（40 例金样按「39 逐字 + 1 例 brk-extra-paired 显式安全修正」口径 0 差异 + 18 条同名嵌套用例逐字一致）；MK `tests/settings-api.test.mjs` 的 data: 模块导入重写清单已覆盖本仓 `shared-processing-prompt.js`，v4.0.1 合并后复跑 41/41 通过。
+- **兄弟仓库同步**：`ST-MyriadKnots` 已同步至 1.1.16（合并提交 `009c388`；build 必须随源码更新）。两仓清洗器金样对拍保持一致；MyriadKnots 全量 3695/3677，17 红均可在纯上游基线复现，另 1 skip。
 
 ### 6.1 合并历史索引（逐版本实录与验证数据：`git log -p AGENTS.md`；上游能力摘要：`git show <合并提交>`）
 
@@ -122,7 +122,7 @@
 | v4.1.4 | 11-07 | `3fec748` | 2 冲突（预判全中）：manifest→`4.1.4moon`、bundle 重建；user-name-mask 局部刷新直通（本地零改动文件），moon 三句与三参 bindTagField 核对在位 | 545/543（1 上游原生）/1 skip |
 | v4.1.5 | 11-08 | `9864eac` | 2 冲突（预判全中）：manifest→`4.1.5moon`、bundle 重建；GPT 推理模型参数兼容直通（api/client.js 本地零改动文件），moon 三句与三参 bindTagField 核对在位 | 597/595（1 上游原生）/1 skip |
 | v4.1.6+v4.1.7 | 11-09 | `30ff186` | 2 冲突（预判全中）：manifest→`4.1.7moon`、bundle 重建；RESPONSE_STYLE_GUIDE 表达规则直通（api/client.js 本地零改动文件）、视口面板布局（新 ui/panel-window.js，index.js 14 hunk 自动合并）与故事日期精修均无本地产权交集，moon 三句与三参 bindTagField 核对在位（8648/8667/8668） | 617/615（1 上游原生）/1 skip |
-| v4.1.8~v4.2.0 | 11-13 | `a04995d` | 2 冲突（预判全中）：manifest→`4.2.0moon`、bundle 重建；手机视口/编辑几何与记忆上下文更新直通，index.js 自动合并后本地文案及三参 bindTagField 在位；本地核心资产与上游零交集 | 116/116 本地测试 |
+| v4.1.8~v4.2.0 | 11-13 | `a04995d` | 2 冲突：manifest、bundle；移动几何/记忆上下文直通，定制资产保留；键 `20261113.ea13fe5bd2dc2693` | 642/640+1上游红+1skip |
 
 ---
 
