@@ -25,7 +25,7 @@ function productionRegion(startMarker, endMarker) {
 }
 
 test('paired named wrappers are kept verbatim as literal wrapper rules', () => {
-    // 本仓合同（AGENTS §2.1）：包裹规则「原样保留、大小写敏感」，不做 lower 归一，也不限定
+    // 本仓合同（fork-contracts 一、tag-names 条）：包裹规则「原样保留、大小写敏感」，不做 lower 归一，也不限定
     // 必须是 [name]...[/name] 形态——上游 v3.9.1 改为 lower + 仅接受合法标签名的成对括号。
     // 本仓是上游方案的超集（任意「起始...结束」），故命名中括号同样按字面量规则原样保留。
     assert.deepEqual(normalizeTagRules(' [DRAFT]...[/DRAFT], [状态]...[/状态], think, [[...]]'), [
@@ -37,7 +37,7 @@ test('paired named wrappers are kept verbatim as literal wrapper rules', () => {
 });
 
 test('configured paired wrappers remove complete multiline blocks including kept content', () => {
-    // 本仓合同：定界符大小写敏感（AGENTS §2.1），故配置与正文必须同大小写；
+    // 本仓合同：定界符大小写敏感（fork-contracts 一、tag-names 条），故配置与正文必须同大小写；
     // 上游 v3.9.1 起定界符大小写不敏感（[/dRaFt] 亦能被 [draft]...[/draft] 闭合）。
     const raw = '前[DRAFT]草稿一\n<content>重复正文</content>\n[/DRAFT]中[状态]私有\n内容[/状态]后';
     assert.equal(stripTags(raw, { extraTags: '[DRAFT]...[/DRAFT],[状态]...[/状态]' }), '前中后');
@@ -46,7 +46,7 @@ test('configured paired wrappers remove complete multiline blocks including kept
 test('configured paired wrappers handle adjacent and nested blocks with keep-list priority', () => {
     const raw = '前[DRAFT]外层[DRAFT]内层[/DRAFT]尾声[/DRAFT][状态]隐私[/状态]后';
     assert.equal(stripTags(raw, { extraTags: '[DRAFT]...[/DRAFT],[状态]...[/状态]' }), '前后');
-    // 本仓 M3 合同：extra 恒优先、可穿透 keep 子树（AGENTS §3.1）。同名规则同时进两栏时
+    // 本仓 M3 合同：extra 恒优先、可穿透 keep 子树（fork-contracts §3.1）。同名规则同时进两栏时
     // extra 胜出、整块剔除，而非上游的「keep 清单优先」救援语义。
     assert.equal(stripTags(raw, {
         keepTags: '[DRAFT]...[/DRAFT]',
@@ -66,7 +66,7 @@ test('XML closing tags do not close a same-named bracket wrapper', () => {
 });
 
 test('unclosed bracket wrappers inside stripped XML follow rescue-only rendering', () => {
-    // 本仓 M1 合同：extra 块连同内部内容一并删除，不做「保留子标签救援」（AGENTS §3.1）；
+    // 本仓 M1 合同：extra 块连同内部内容一并删除，不做「保留子标签救援」（fork-contracts §3.1）；
     // 上游对 XML/[[...]] 内明确保留的子标签执行 rescue-only 渲染。
     assert.equal(stripTags('<thinking>普通噪音[draft]更多噪音</thinking>', {
         extraTags: 'thinking,[draft]...[/draft]',
@@ -99,7 +99,7 @@ test('settings input and change persist normalized wrapper syntax and refill the
     // 仍是 sanitizeTagList + bindTagField 的包裹符绑定段（含 moon 三参冲突拦截）。
     const region = productionRegion('function sanitizeTagList(raw) {', "    bindTagField('#sp-mem-keeptags'");
     const handlers = {};
-    // 生产 getSettings() 会先物化本地默认（keepTags:''）再初始化共享容器（AGENTS §3.3）；
+    // 生产 getSettings() 会先物化本地默认（keepTags:''）再初始化共享容器（fork-contracts §3.3）；
     // 夹具必须呈现同一时序，否则共享容器会落到上游回退值 'content'。
     const extensionSettings = { 'schedule-planner': { keepTags: '', extraTags: '' } };
     const settings = getSharedBodyWrappers(extensionSettings);
@@ -124,7 +124,7 @@ test('settings input and change persist normalized wrapper syntax and refill the
     bind('#sp-mem-extratags', 'extraTags');
     const field = { value: ' [DRAFT]...[/DRAFT], think ' };
     handlers['#sp-mem-extratags:input'].call(field);
-    // 本仓合同：包裹规则原样保留、大小写敏感（AGENTS §2.1）；上游会 lower 归一为 [draft]...[/draft]。
+    // 本仓合同：包裹规则原样保留、大小写敏感（fork-contracts 一、tag-names 条）；上游会 lower 归一为 [draft]...[/draft]。
     assert.equal(settings.extraTags, '[DRAFT]...[/DRAFT],think');
     settings.keepTags = '正文';
     handlers['#sp-mem-extratags:change'].call(field);
@@ -147,7 +147,7 @@ test('settings input and change persist normalized wrapper syntax and refill the
 test('production recent generation history excludes configured draft blocks from AI material', () => {
     const region = productionRegion('function buildRecentGenerationHistory(ctx, historyLimit, opts = {}) {', 'function outlineWorldInfoTriggerText(history) {');
     const build = vm.runInNewContext(`${region}\nbuildGenerationHistoryContext`, {
-        // 本仓默认 keepTags 为 ''（M0，AGENTS §3.3）；上游缺省 'content'。
+        // 本仓默认 keepTags 为 ''（M0，fork-contracts §3.3）；上游缺省 'content'。
         // 该生产链路走 sanitizeGenerationContextText（非裸 stripTags）；定界符大小写敏感，故与正文同大小写。
         getSettings: () => ({}),
         getWrapperSettings: () => ({ keepTags: '', extraTags: '[DRAFT]...[/DRAFT]' }),

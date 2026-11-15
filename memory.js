@@ -206,7 +206,7 @@ function restoreMemoryRoot(root, snapshot) {
 
 // 上游 v3.9.0 在此导出的 normalizeTagList/parseTagList 予以保留（本仓 stripTags 已由
 // runtime/tag-sanitizer.js 提供，这两个符号当前无调用方），以免上游后续调用方断裂。
-// 注意：keepTags 的默认值在本仓为 ''（见 AGENTS §3.3），并非上游注释所称的 'content'。
+// 注意：keepTags 的默认值在本仓为 ''（见 fork-contracts §3.3），并非上游注释所称的 'content'。
 export function normalizeTagList(csv) {
     return normalizeTagRules(csv);
 }
@@ -500,7 +500,7 @@ async function runL0(groupKey, { queueL1 = true, memory = null, diagnosticScope 
     const signal = jobSignal();
     try {
         // 本地：提升的组合 signal（finally disposeJobSignal 闭环）+ 上游 v3.8.0 诊断 sink/accepted。
-        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（AGENTS.md §2 memory.js 条目）。
+        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（fork-contracts 一、memory.js 条目）。
         response = await _callApi(messages, signal, diagnostic.sink);
         diagnostic.accepted();
     } catch (err) {
@@ -600,7 +600,7 @@ async function runL1(groupKeys, memory = null, diagnosticScope = null) {
     const signal = jobSignal();
     try {
         // 本地：提升的组合 signal（finally disposeJobSignal 闭环）+ 上游 v3.8.0 诊断 sink/accepted。
-        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（AGENTS.md §2 memory.js 条目）。
+        // 不可取上游内联 jobSignal()——会使 finally 的 dispose 落空或悬空（fork-contracts 一、memory.js 条目）。
         response = await _callApi(messages, signal, diagnostic.sink);
         diagnostic.accepted();
     } catch (err) {

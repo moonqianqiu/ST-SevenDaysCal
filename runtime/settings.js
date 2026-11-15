@@ -114,7 +114,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const getWrapperSettings = () => getSharedBodyWrappers(extension_settings);
-// 写入用本仓 normalizeTagRules（包裹规则原样保留、大小写敏感，AGENTS §2.1）：
+// 写入用本仓 normalizeTagRules（包裹规则原样保留、大小写敏感，fork-contracts 一、tag-names 条）：
 // updateSharedBodyWrappers 会按上游规则 lower 归一命名对，经它写回会破坏本仓合同。
 // 共享容器本身照用——上游插件读取时各自再归一化，双向兼容。
 export const updateWrapperSettings = patch => {
