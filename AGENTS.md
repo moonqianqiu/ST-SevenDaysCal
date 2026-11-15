@@ -33,7 +33,7 @@
 | 上游自身 Agent 合同（随发布收录） | [`docs/fork/upstream-agent-contract.md`](docs/fork/upstream-agent-contract.md) |
 | 查某次合并改了什么 | [`docs/fork/merge-notes.md`](docs/fork/merge-notes.md)（卷首全历史索引表；旧版细节 `git log -p AGENTS.md`） |
 
-**产权规则**：`docs/fork/` 下为本仓本地文档；其余 `docs/**`（axis-point audit、handoffs、superpowers）与根 `debug-sessions/` 均为**上游产权**——勿改名、勿搬动、勿按本地习惯改写。
+**docs/ 分布与产权**：`docs/fork/` 下为本仓本地文档（见上表）；其余均为**上游产权**——勿改名、勿搬动、勿按本地习惯改写：`docs/axis-point-ledger-final-audit-2026-08-22.md`（轴点账本终审计）、`docs/handoffs/`（上游交接记录）、`docs/superpowers/`（上游 Superpowers agent 工作流的实施计划/设计规格产物，如 2026-11-08 Shadow DOM 分批迁移）、根 `debug-sessions/`（上游调试会话记录）。
 
 ## 门禁
 
