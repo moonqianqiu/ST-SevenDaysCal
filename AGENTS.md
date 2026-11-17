@@ -4,6 +4,8 @@
 
 > **注意**：上游自带 `AGENTS.md`（随发布重写）——合并时本文件冲突**保留 fork 侧骨架**，上游 Agent 合同内容收录进 [`docs/fork/upstream-agent-contract.md`](docs/fork/upstream-agent-contract.md)。
 
+开发入口与验证方式见 [BUILD.md](BUILD.md)，界面隔离进度见 [docs/shadow-dom.md](docs/shadow-dom.md)。
+
 ## 红线（违反即返工）
 
 1. **清洗器缺省行为一字不改**：`runtime/tag-sanitizer.js` 四模式合同（M0 直通等）由 40 例金样 + MK 跨仓对拍锁定；`memory.js` 的 `stripTags` 保持对该模块的 re-export，严禁退回上游内联旧正则。
