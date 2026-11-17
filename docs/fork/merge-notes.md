@@ -30,6 +30,7 @@
 | v4.1.5 | 11-08 | `9864eac` | 2 冲突（预判全中）：manifest→`4.1.5moon`、bundle 重建；GPT 推理模型参数兼容直通 | 597/595（1 上游原生）/1 skip |
 | v4.1.6+v4.1.7 | 11-09 | `30ff186` | 2 冲突（预判全中）：manifest→`4.1.7moon`、bundle 重建；RESPONSE_STYLE_GUIDE 表达规则直通、视口面板布局（新 ui/panel-window.js）与故事日期精修均无本地产权交集 | 617/615（1 上游原生）/1 skip |
 | v4.1.8~v4.2.0 | 11-13 | `a04995d` | 2 冲突：manifest、bundle；移动几何/记忆上下文直通，定制资产保留 | 642/640+1上游红+1skip |
+| v4.2.1~v4.2.3 | 11-17 | `48ed1e7` | 3 冲突：fork AGENTS 骨架、manifest `4.2.3moon`、bundle 重建；Shadow DOM/窗口诊断直通，jobSignal 保留 | 721/717+1时序红+2 EPERM+1skip |
 
 ---
 
@@ -37,3 +38,11 @@
 
 - 新合并详情写本文件新版本节（§0 之后按版本追加）+ 卷首索引表加一行（≤120 字符）；逐版本裁决细节历史仍可 `git log -p AGENTS.md` 回查。
 - 契约改动写 [`fork-contracts.md`](./fork-contracts.md) 对应条目；上游 AGENTS.md 新内容更新 [`upstream-agent-contract.md`](./upstream-agent-contract.md)；根 `AGENTS.md` 状态块只原地更新当前值，**禁止追加历史叙述**。
+
+## v4.2.1~v4.2.3（2026-11-17，合并提交 `48ed1e7`）
+
+上游 `3d1406b` 汇总 v4.2.1 至 v4.2.3。三处冲突按既有规则处理：根 `AGENTS.md` 保留 moon 治理骨架并补 BUILD/Shadow DOM 导航；manifest 版本改为 `4.2.3moon`，JS 使用本地源码重建后的真实哈希；`gouhua-app.js` 不手解压缩冲突，直接由 Rolldown 1.2.6 重建。
+
+上游改动主要覆盖楼内内容、魔杖与收藏入口的 Shadow DOM 隔离，iPhone Safari/Fx 文本编辑几何修正，窗口诊断工具，以及轴、点、间、坐标和便携聊天数据的增量修复。旧调试会话与交接文档按上游清理，新的 `docs/shadow-dom.md` 成为状态入口。
+
+`memory.js` 上游未触碰，本地 `_jobSignalDisposes` WeakMap、`runL0`/`runL1` 提升 signal 与 `finally disposeJobSignal` 闭环完整保留，并已进入重建 bundle。清洗器金样与千千结逐字节同 SHA。全量 721 项：717 通过；`ledger/ui-refresh` 首轮时序失败但单跑 2/2 通过；`menu-image-store` 与 `store-local-applied` 的测试内部显式 spawn 被沙箱 `EPERM` 拒绝；另 1 项宿主依赖 skip。bundle SHA-256 `ca4a7c2eeb63224af30966e4c45f3a3dbceffc551bcffb41ea9cf21c9ac7e556`，CSS SHA 与上游一致。

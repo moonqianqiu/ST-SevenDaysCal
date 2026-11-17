@@ -54,6 +54,6 @@ node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 64
 
 ## 当前状态（合并/发布后原地更新本节，旧值删除不保留）
 
-- **分支** `master`；**上游基线** v4.2.0（上游提交 `a04995d`）；**当前版本** `manifest.json` = `4.2.0moon`。
-- **全量基线**：642/640 + 1 上游原生红（`ledger/ui-refresh` 刻度刷新，单跑 2/2 绿）+ 1 skip（缺宿主源码的 Quick Reply loader 用例）。
-- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.2.1（含地点标签证据闸门修复）；两仓清洗器金样对拍保持逐字节一致。
+- **分支** `master`；**上游基线** v4.2.3（上游提交 `3d1406b`）；**当前版本** `manifest.json` = `4.2.3moon`；合并提交 `48ed1e7`。
+- **全量基线**：721 项中 717 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、2 项测试内部 spawn 被沙箱 `EPERM` 拦截、1 skip；构建与 bundle 哈希门禁通过。
+- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.0（合并提交 `22f713d`）；两仓清洗器金样 SHA-256 保持一致。
