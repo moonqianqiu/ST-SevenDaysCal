@@ -31,6 +31,7 @@
 | v4.1.6+v4.1.7 | 11-09 | `30ff186` | 2 冲突（预判全中）：manifest→`4.1.7moon`、bundle 重建；RESPONSE_STYLE_GUIDE 表达规则直通、视口面板布局（新 ui/panel-window.js）与故事日期精修均无本地产权交集 | 617/615（1 上游原生）/1 skip |
 | v4.1.8~v4.2.0 | 11-13 | `a04995d` | 2 冲突：manifest、bundle；移动几何/记忆上下文直通，定制资产保留 | 642/640+1上游红+1skip |
 | v4.2.1~v4.2.3 | 11-17 | `48ed1e7` | 3 冲突：fork AGENTS 骨架、manifest `4.2.3moon`、bundle 重建；Shadow DOM/窗口诊断直通，jobSignal 保留 | 721/717+1时序红+2 EPERM+1skip |
+| v4.2.4~v4.2.6 | 11-21 | `f788a3a` | 2 冲突（预判全中）：manifest `4.2.6moon`、bundle 重建；坐标便签收藏/世界书标题目录/防剧透铺垫直通，moon 资产逐点核验在位 | 735/733+1时序红+1skip |
 
 ---
 
@@ -46,3 +47,11 @@
 上游改动主要覆盖楼内内容、魔杖与收藏入口的 Shadow DOM 隔离，iPhone Safari/Fx 文本编辑几何修正，窗口诊断工具，以及轴、点、间、坐标和便携聊天数据的增量修复。旧调试会话与交接文档按上游清理，新的 `docs/shadow-dom.md` 成为状态入口。
 
 `memory.js` 上游未触碰，本地 `_jobSignalDisposes` WeakMap、`runL0`/`runL1` 提升 signal 与 `finally disposeJobSignal` 闭环完整保留，并已进入重建 bundle。清洗器金样与千千结逐字节同 SHA。全量 721 项：717 通过；`ledger/ui-refresh` 首轮时序失败但单跑 2/2 通过；`menu-image-store` 与 `store-local-applied` 的测试内部显式 spawn 被沙箱 `EPERM` 拒绝；另 1 项宿主依赖 skip。bundle SHA-256 `ca4a7c2eeb63224af30966e4c45f3a3dbceffc551bcffb41ea9cf21c9ac7e556`，CSS SHA 与上游一致。
+
+## v4.2.4~v4.2.6（2026-11-21，合并提交 `f788a3a`）
+
+上游 `92a5e1f` 汇总 v4.2.4 至 v4.2.6：点/线/面生成按玩家知情范围铺垫未揭晓秘密（防剧透）；间聊天气泡一键收藏到坐标（按酒馆聊天归档、自动「间」标签、300 字内全文直显）；明确查问世界书时同轮取材带回可读条目标题；记忆源未就绪或读取失败时间用本轮问题+角色设定+已有对话继续聊天（主楼刚开场也可聊）。
+
+冲突恰为预判两处：manifest（版本 `4.2.6moon`、描述采上游「坐标(楼层与便签收藏)」、css 键随上游 style.css 采纳 `20261120.2cc52f733fa30274`、js 键以重建 bundle 真实哈希回填 `20261121.509066b338e24747`）与 `gouhua-app.js`（Rolldown 1.2.6 重建，1,304,549 B）。`index.js` 3-way 自动合并：与上游增量逐 hunk 逐字节比对一致（仅行号偏移 +3），moon 三句文案区、三参 `bindTagField`（8766/8785/8786）、夜间模式判定逐点核验在位。其余 13 个产权文件（AGENTS/memory.js/清洗器/settings/测试适配等）与合并前逐字节零变化。上游未动自家 `AGENTS.md`，upstream-agent-contract 无新增条款。
+
+全量 735 项：733 通过、1 skip；唯一红为已知时序红 `ledger/ui-refresh`（单跑 2/2 绿，归因见 merge-playbook §4）。清洗器金样与千千结 SHA-256 逐字节一致（`a61361cb…`）。

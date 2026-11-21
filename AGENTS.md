@@ -24,7 +24,7 @@
 | 清洗设置 M0 与校验 | `runtime/settings.js`、`index.js` | keepTags 默认 `''`；两栏同名冲突拒绝落存；moon 三句文案 |
 | 共享容器本地挂接 | `runtime/settings.js`、`utils/tag-names.js` | 初始化后置 + 大小写敏感归一化写入；tag-names 泛化为上游严格超集 |
 | Windows loader 适配测试 | `runtime/store-local-applied.test.js`、`runtime/menu-image-store.test.js`、`runtime/quick-reply-shortcuts-host.test.js` | `pathToFileURL`/`fileURLToPath` 代修不可回退 |
-| 本地产权差异清单 | `git diff --name-only upstream/master` | 恰为 merge-playbook §7 所列 16 文件，其余差异逐项解释 |
+| 本地产权差异清单 | `git diff --name-only upstream/master` | 恰为 merge-playbook §7 所列 20 文件（16 核心 + 4 docs/fork 本地文档），其余差异逐项解释 |
 
 ## 文档地图
 
@@ -42,10 +42,10 @@
 ```bash
 # 1) 冲突标记零残留
 git grep -n '^<<<<<<<'            # 匹配数必须为 0
-# 2) 本地产权差异清单核对（恰为 merge-playbook §7 所列 16 文件）
+# 2) 本地产权差异清单核对（恰为 merge-playbook §7 所列 20 文件）
 git diff --name-only upstream/master
 # 3) 全量测试（必须 isolation=none——默认隔离 spawn 子进程在沙箱报 EPERM 伪红）
-node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 642/640 + 1 上游原生红 + 1 skip
+node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 735/733 + 1 已知时序红 + 1 skip
 # 4) 与 ST-MyriadKnots 跨仓终验对拍
 #    40 例金样与 MK src/tag-sanitizer.golden.json 逐字节一致，双实现输出 0 差异
 ```
@@ -54,6 +54,6 @@ node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 64
 
 ## 当前状态（合并/发布后原地更新本节，旧值删除不保留）
 
-- **分支** `master`；**上游基线** v4.2.3（上游提交 `3d1406b`）；**当前版本** `manifest.json` = `4.2.3moon`；合并提交 `48ed1e7`。
-- **全量基线**：721 项中 717 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、2 项测试内部 spawn 被沙箱 `EPERM` 拦截、1 skip；构建与 bundle 哈希门禁通过。
-- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.0（合并提交 `22f713d`）；两仓清洗器金样 SHA-256 保持一致。
+- **分支** `master`；**上游基线** v4.2.6（上游提交 `92a5e1f`）；**当前版本** `manifest.json` = `4.2.6moon`；合并提交 `f788a3a`。
+- **全量基线**：735 项中 733 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、1 skip；2 项显式 spawn 用例受沙箱 `EPERM` 偶发拦截（本轮通过）；构建与 bundle 哈希门禁通过。
+- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.1（合并提交 `98de638`）；两仓清洗器金样 SHA-256 保持一致。

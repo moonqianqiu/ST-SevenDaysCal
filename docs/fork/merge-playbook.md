@@ -50,9 +50,11 @@
 
 ## 7. 本地产权差异清单（门禁 2 校验基准）
 
-合并结果相对 `upstream/master` 应只差以下核心本地产权文件（`git diff --name-only upstream/master`，共 16 个）；**其余差异须逐项解释**：
+合并结果相对 `upstream/master` 应只差以下本地产权文件（`git diff --name-only upstream/master`，共 20 个 = 16 核心 + 4 本地文档）；**其余差异须逐项解释**：
 
-`AGENTS.md`、`.gitattributes`（`* text=auto eol=lf`）、`.gitignore`、`gouhua-app.js`（产物随源重建）、`index.js`（moon 三句文案 + 三参 bindTagField）、`manifest.json`（版本 moon 后缀）、`memory.js`、`memory.sanitizer.test.js`、`runtime/menu-image-store.test.js`（v4.0.1 起本地 `pathToFileURL` 代修）、`runtime/quick-reply-shortcuts-host.test.js`（Windows loader 适配 + 无宿主源码时 `t.skip`）、`runtime/settings.js`（M0 三件套）、`runtime/store-local-applied.test.js`（Windows 适配）、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`test/tag-sanitizer.test.mjs`（moon 合同适配）、`utils/tag-names.js`。
+核心 16：`AGENTS.md`、`.gitattributes`（`* text=auto eol=lf`）、`.gitignore`、`gouhua-app.js`（产物随源重建）、`index.js`（moon 三句文案 + 三参 bindTagField）、`manifest.json`（版本 moon 后缀 + 缓存键）、`memory.js`、`memory.sanitizer.test.js`、`runtime/menu-image-store.test.js`（v4.0.1 起本地 `pathToFileURL` 代修）、`runtime/quick-reply-shortcuts-host.test.js`（Windows loader 适配 + 无宿主源码时 `t.skip`）、`runtime/settings.js`（M0 三件套）、`runtime/store-local-applied.test.js`（Windows 适配）、`runtime/tag-sanitizer.js`、`runtime/tag-sanitizer.golden.json`、`test/tag-sanitizer.test.mjs`（moon 合同适配）、`utils/tag-names.js`。
+
+本地文档 4（2026-11-15 文档重整起）：`docs/fork/fork-contracts.md`、`docs/fork/merge-notes.md`、`docs/fork/merge-playbook.md`、`docs/fork/upstream-agent-contract.md`。
 
 历史适配文件退役记录：`business/memory/qianqianjie.test.js`、`business/space/context.test.js`、`test/index-chat-boundary.test.mjs`、`test/memory-source-production.test.mjs`、`business/narrative-pace.test.js`、`business/narrative-preferences.test.js` 已与上游一致或一律取上游（见 fork-contracts「三、勿回植速查」）；`runtime/local-diagnostics.js`、`runtime/local-diagnostics.test.js`、`tools/read-local-diagnostics.mjs`、`runtime/external-chat-storage.js`、`runtime/external-chat-host-bridge.js` 已随上游 v3.10.2 删除。
 
