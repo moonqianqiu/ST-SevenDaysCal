@@ -45,7 +45,7 @@ git grep -n '^<<<<<<<'            # 匹配数必须为 0
 # 2) 本地产权差异清单核对（恰为 merge-playbook §7 所列 20 文件）
 git diff --name-only upstream/master
 # 3) 全量测试（必须 isolation=none——默认隔离 spawn 子进程在沙箱报 EPERM 伪红）
-node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 735/733 + 1 已知时序红 + 1 skip
+node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 729/727 + 1 已知时序红 + 1 skip
 # 4) 与 ST-MyriadKnots 跨仓终验对拍
 #    40 例金样与 MK src/tag-sanitizer.golden.json 逐字节一致，双实现输出 0 差异
 ```
@@ -54,6 +54,6 @@ node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 73
 
 ## 当前状态（合并/发布后原地更新本节，旧值删除不保留）
 
-- **分支** `master`；**上游基线** v4.2.6（上游提交 `92a5e1f`）；**当前版本** `manifest.json` = `4.2.6moon`；合并提交 `f788a3a`。
-- **全量基线**：735 项中 733 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、1 skip；2 项显式 spawn 用例受沙箱 `EPERM` 偶发拦截（本轮通过）；构建与 bundle 哈希门禁通过。
+- **分支** `master`；**上游基线** v4.2.8（上游提交 `9b15a4e`）；**当前版本** `manifest.json` = `4.2.8moon`；合并提交 `31320e6`。
+- **全量基线**：729 项中 727 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、1 skip；2 项显式 spawn 用例受沙箱 `EPERM` 偶发拦截（本轮通过）；构建与 bundle 哈希门禁通过。
 - **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.1（合并提交 `98de638`）；两仓清洗器金样 SHA-256 保持一致。

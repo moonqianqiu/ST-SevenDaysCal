@@ -32,6 +32,7 @@
 | v4.1.8~v4.2.0 | 11-13 | `a04995d` | 2 冲突：manifest、bundle；移动几何/记忆上下文直通，定制资产保留 | 642/640+1上游红+1skip |
 | v4.2.1~v4.2.3 | 11-17 | `48ed1e7` | 3 冲突：fork AGENTS 骨架、manifest `4.2.3moon`、bundle 重建；Shadow DOM/窗口诊断直通，jobSignal 保留 | 721/717+1时序红+2 EPERM+1skip |
 | v4.2.4~v4.2.6 | 11-21 | `f788a3a` | 2 冲突（预判全中）：manifest `4.2.6moon`、bundle 重建；坐标便签收藏/世界书标题目录/防剧透铺垫直通，moon 资产逐点核验在位 | 735/733+1时序红+1skip |
+| v4.2.7~v4.2.8 | 11-22 | `31320e6` | 2 冲突（预判全中）：manifest `4.2.8moon`、bundle 重建；线潜伏注入补回/功能开关管手动+自动直通，moon 资产逐点核验在位 | 729/727+1时序红+1skip |
 
 ---
 
@@ -55,3 +56,11 @@
 冲突恰为预判两处：manifest（版本 `4.2.6moon`、描述采上游「坐标(楼层与便签收藏)」、css 键随上游 style.css 采纳 `20261120.2cc52f733fa30274`、js 键以重建 bundle 真实哈希回填 `20261121.509066b338e24747`）与 `gouhua-app.js`（Rolldown 1.2.6 重建，1,304,549 B）。`index.js` 3-way 自动合并：与上游增量逐 hunk 逐字节比对一致（仅行号偏移 +3），moon 三句文案区、三参 `bindTagField`（8766/8785/8786）、夜间模式判定逐点核验在位。其余 13 个产权文件（AGENTS/memory.js/清洗器/settings/测试适配等）与合并前逐字节零变化。上游未动自家 `AGENTS.md`，upstream-agent-contract 无新增条款。
 
 全量 735 项：733 通过、1 skip；唯一红为已知时序红 `ledger/ui-refresh`（单跑 2/2 绿，归因见 merge-playbook §4）。清洗器金样与千千结 SHA-256 逐字节一致（`a61361cb…`）。
+
+## v4.2.7~v4.2.8（2026-11-22，合并提交 `31320e6`）
+
+上游 `9b15a4e` 汇总 v4.2.7 至 v4.2.8：4.2.7 修复酒馆重建聊天后「线」潜伏注入丢失（主楼生成前按开关补回当前聊天活跃线）；4.2.8「线/冷知识/刻度」功能开关同时管手动与自动生成（关着时点击生成、推进、标注或更新提示先开启对应功能），关闭「刻度」立即撤下潜伏注入，间隔设 0＝只手动执行对应任务。业务改动全部落在 `business/ledger|lines|space` 与 `index.js` 设置面板文案，`runtime/settings.js` 仅注释改写（开关语义描述）。
+
+冲突恰为预判两处：manifest（版本 `4.2.8moon`、js 键以重建 bundle 真实哈希回填 `20261122.a9c5c8b16d046dd1`、css 键与描述不变）与 `gouhua-app.js`（Rolldown 1.2.6 重建，1,306.24 kB）。`index.js` 3-way 自动合并：与上游增量逐行比对，差异恰为本仓两处本地资产（标签清洗面板 moon 文案、三参 `bindTagField` 两栏同名冲突拒绝落存），其余逐字节一致；`runtime/settings.js` 本仓 M0 挂接四处（getWrapperSettings 初始化后置等）逐点在位。清洗器金样与千千结 SHA-256 逐字节一致（`a61361cb…`）。上游未动自家 `AGENTS.md`，upstream-agent-contract 无新增条款。
+
+全量 729 项：727 通过、1 skip；唯一红为已知时序红 `ledger/ui-refresh`（单跑 2/2 绿，归因见 merge-playbook §4；上游本次给该文件 settings 桩补 `ledgerCaptureEnabled: true`，时序红形态不变）。测试总数 735→729 系上游重组刻度/线测试所致（lines ±168、ledger-automation-reroll ±97、stable-floor +58、dashed-failure +46）。
