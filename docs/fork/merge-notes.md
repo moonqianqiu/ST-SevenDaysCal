@@ -33,6 +33,7 @@
 | v4.2.1~v4.2.3 | 11-17 | `48ed1e7` | 3 冲突：fork AGENTS 骨架、manifest `4.2.3moon`、bundle 重建；Shadow DOM/窗口诊断直通，jobSignal 保留 | 721/717+1时序红+2 EPERM+1skip |
 | v4.2.4~v4.2.6 | 11-21 | `f788a3a` | 2 冲突（预判全中）：manifest `4.2.6moon`、bundle 重建；坐标便签收藏/世界书标题目录/防剧透铺垫直通，moon 资产逐点核验在位 | 735/733+1时序红+1skip |
 | v4.2.7~v4.2.8 | 11-22 | `31320e6` | 2 冲突（预判全中）：manifest `4.2.8moon`、bundle 重建；线潜伏注入补回/功能开关管手动+自动直通，moon 资产逐点核验在位 | 729/727+1时序红+1skip |
+| v4.2.9 | 11-24 | `48657ac` | 2 冲突（预判全中）：manifest `4.2.9moon`、bundle 重建；桌面拖选松手不误关弹窗直通，moon 资产逐点核验在位 | 730/728+1时序红+1skip |
 
 ---
 
@@ -64,3 +65,11 @@
 冲突恰为预判两处：manifest（版本 `4.2.8moon`、js 键以重建 bundle 真实哈希回填 `20261122.a9c5c8b16d046dd1`、css 键与描述不变）与 `gouhua-app.js`（Rolldown 1.2.6 重建，1,306.24 kB）。`index.js` 3-way 自动合并：与上游增量逐行比对，差异恰为本仓两处本地资产（标签清洗面板 moon 文案、三参 `bindTagField` 两栏同名冲突拒绝落存），其余逐字节一致；`runtime/settings.js` 本仓 M0 挂接四处（getWrapperSettings 初始化后置等）逐点在位。清洗器金样与千千结 SHA-256 逐字节一致（`a61361cb…`）。上游未动自家 `AGENTS.md`，upstream-agent-contract 无新增条款。
 
 全量 729 项：727 通过、1 skip；唯一红为已知时序红 `ledger/ui-refresh`（单跑 2/2 绿，归因见 merge-playbook §4；上游本次给该文件 settings 桩补 `ledgerCaptureEnabled: true`，时序红形态不变）。测试总数 735→729 系上游重组刻度/线测试所致（lines ±168、ledger-automation-reroll ±97、stable-floor +58、dashed-failure +46）。
+
+## v4.2.9（2026-11-24，合并提交 `48657ac`）
+
+上游 `a8249fc` 单发布：修复桌面端在 API 编辑窗中拖选文字、移到弹窗外松手时误关窗口——选区与未保存内容保留，单击遮罩仍可关闭。改动仅 `modal.js`：遮罩点击关闭改由 `ui/panel-window.js` 既有的 `bindOutsideClose`（pointerdown/up/click 路径判定，base 已存在）接管；配套两个上游测试文件改用 `EventTarget` 假 DOM 并新增拖选/遮罩分例。
+
+冲突恰为预判两处：manifest（版本 `4.2.9moon`、js 键以重建 bundle 真实哈希回填 `20261124.994f7d2ea327cc8b`、css 键与描述不变）与 `gouhua-app.js`（Rolldown 1.2.6 重建，1,306.28 kB）。`modal.js` 与两个上游测试文件 3-way 合并结果与上游逐字节相同（本仓未改这些文件）；20 个产权文件清单核对无增删，其余 18 个（AGENTS/memory.js/清洗器/settings/测试适配等）与合并前逐字节零变化，moon 文案与三参 `bindTagField` 经重建 bundle 实检在位（`本栏改动会同步到构画`、`sp-mem-keeptags`）。清洗器金样与千千结 SHA-256 逐字节一致（`a61361cb…`）。上游未动自家 `AGENTS.md`，upstream-agent-contract 无新增条款。
+
+全量 730 项（+1 上游新例）：728 通过、1 skip；唯一红为已知时序红 `ledger/ui-refresh`（单跑 2/2 绿，归因见 merge-playbook §4，形态与上轮相同）。
