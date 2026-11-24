@@ -56,4 +56,4 @@ node --test --test-isolation=none '**/*.test.js' 'test/*.test.mjs'   # 当前 73
 
 - **分支** `master`；**上游基线** v4.2.9（上游提交 `a8249fc`）；**当前版本** `manifest.json` = `4.2.9moon`；合并提交 `48657ac`。
 - **全量基线**：730 项中 728 通过、1 已知时序红（`ledger/ui-refresh` 单跑 2/2 绿）、1 skip；2 项显式 spawn 用例受沙箱 `EPERM` 偶发拦截（本轮通过）；构建与 bundle 哈希门禁通过。
-- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.2（合并提交 `5dbc86f`）；两仓清洗器金样 SHA-256 保持一致。
+- **兄弟仓库**：`ST-MyriadKnots` 已同步至 v1.3.3（合并提交 `e921b9d`）；两仓清洗器金样 SHA-256 保持一致。
